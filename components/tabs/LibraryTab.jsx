@@ -32,7 +32,7 @@ export const LibraryTab = ({ songs, onPlay }) => {
               <div className="flex items-center gap-4 min-w-0 flex-1">
                 {/* Index / Icon */}
                 <div className="w-10 h-10 rounded-xl bg-suno-gray-800 border border-suno-gray-700 flex items-center justify-center text-lg shrink-0 group-hover:bg-suno-accent/20 group-hover:border-suno-accent transition-all duration-300">
-                  <span className="group-hover:hidden font-mono text-xs text-gray-500">
+                  <span className="group-hover:hidden font-mono text-xs text-gray-300">
                     {idx + 1}
                   </span>
                   <span className="hidden group-hover:block material-symbols-outlined text-suno-accent text-base font-bold" style={{ fontVariationSettings: "'FILL' 1" }}>

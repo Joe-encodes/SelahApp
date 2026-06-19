@@ -80,15 +80,13 @@ export default function SelahApp() {
 
       {/* Sidebar Navigation Shell (Hidden on Mobile) */}
       <aside className="fixed left-0 top-0 h-full w-64 bg-suno-gray-900 border-r border-suno-gray-800 flex flex-col p-6 space-y-4 z-50 hidden md:flex">
-        <div className="flex items-center gap-3 mb-8">
-          <div className="w-10 h-10 rounded-xl bg-suno-accent/10 border border-suno-accent/20 flex items-center justify-center text-suno-accent shadow-md shadow-suno-accent/5">
-            <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>
-              auto_awesome
-            </span>
+        <div className="flex flex-col items-center mb-8 border-b border-suno-gray-800 pb-6">
+          <div className="w-24 h-24 rounded-2xl overflow-hidden bg-suno-gray-900 border border-suno-gray-800 flex items-center justify-center shadow-lg mb-3">
+            <img src="/logo.png" alt="Selah Logo" className="w-full h-full object-cover" />
           </div>
-          <div>
+          <div className="text-center">
             <h1 className="font-display text-xl text-white font-bold tracking-tight">SelahAI</h1>
-            <p className="text-[10px] uppercase tracking-widest text-gray-500 font-bold">Creative Studio</p>
+            <p className="text-[10px] uppercase tracking-widest text-gray-400 font-bold">Creative Studio</p>
           </div>
         </div>
 
@@ -121,19 +119,6 @@ export default function SelahApp() {
             <span className="text-sm">Library</span>
           </button>
         </nav>
-
-        <button
-          onClick={() => setTab("create")}
-          className="w-full py-3 bg-suno-accent text-white font-bold rounded-xl active:scale-95 transition-all shadow-lg shadow-suno-accent/20 hover:bg-suno-accent/90"
-        >
-          New Generation
-        </button>
-
-        <div className="pt-6 border-t border-suno-gray-800 space-y-2">
-          <div className="text-[11px] text-center text-gray-500 italic">
-            Kingdom Hack 3.0 MVP
-          </div>
-        </div>
       </aside>
 
       {/* Main Content Area */}
@@ -152,14 +137,6 @@ export default function SelahApp() {
             </div>
           </div>
           <div className="flex items-center gap-6 text-gray-400">
-            <button 
-              onClick={() => setTab("create")}
-              className="flex items-center gap-2 hover:text-white transition-colors bg-suno-accent/10 text-suno-accent px-4 py-2 rounded-full font-medium"
-            >
-              <span className="material-symbols-outlined text-base">auto_awesome</span>
-              <span>Generate New Song</span>
-            </button>
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 cursor-pointer border border-white/10 hover:scale-105 transition-transform" />
           </div>
         </header>
 
@@ -182,8 +159,8 @@ export default function SelahApp() {
               <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                 <span className="material-symbols-outlined text-white text-xl">open_in_full</span>
               </div>
-              <div className="w-full h-full bg-gradient-to-br from-suno-accent/20 to-indigo-900/30 flex items-center justify-center text-2xl">
-                🎵
+              <div className="w-full h-full bg-suno-gray-900 flex items-center justify-center">
+                <img src="/logo.png" alt="Selah Logo" className="w-full h-full object-cover" />
               </div>
             </div>
             <div className="truncate cursor-pointer" onClick={() => setIsPlayerExpanded(true)}>

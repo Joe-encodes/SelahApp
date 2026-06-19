@@ -9,6 +9,7 @@ export const CreateTab = ({ onGenerate }) => {
   const [harmony, setHarmony] = useState("sat");
   const [scripture, setScripture] = useState("");
   const [isAutoEnhance, setIsAutoEnhance] = useState(true);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const toggleLang = (l) =>
     setLangs((prev) =>
@@ -16,7 +17,7 @@ export const CreateTab = ({ onGenerate }) => {
     );
 
   return (
-    <div className="space-y-8 max-w-4xl">
+    <div className="space-y-8 w-full">
       {/* Title */}
       <div>
         <h2 className="font-headline-lg text-2xl md:text-3xl text-white font-bold leading-tight">
@@ -27,22 +28,16 @@ export const CreateTab = ({ onGenerate }) => {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-8 w-full">
         {/* Left Side: Parameters Form */}
         <div className="md:col-span-8 space-y-6">
           <div className="bg-suno-gray-900 border border-suno-gray-800 p-6 md:p-8 rounded-3xl relative overflow-hidden group space-y-6">
             {/* Prompt input styled section */}
             <div className="space-y-3 relative z-10">
               <div className="flex items-center justify-between">
-                <label className="text-[10px] font-bold text-suno-accent uppercase tracking-widest">
+                <label className="text-[10px] font-bold text-gray-300 uppercase tracking-widest">
                   Theme / Doctrine Focus
                 </label>
-                <div className="flex items-center gap-1.5 bg-suno-gray-800 px-3 py-1 rounded-full border border-suno-gray-700">
-                  <span className="w-2 h-2 rounded-full bg-suno-accent animate-pulse"></span>
-                  <span className="text-[10px] font-bold text-suno-accent uppercase tracking-wider">
-                    Selah v2.4 Engine
-                  </span>
-                </div>
               </div>
 
               {/* Theme selection chips */}
@@ -63,101 +58,120 @@ export const CreateTab = ({ onGenerate }) => {
               </div>
             </div>
 
-            {/* Language Selection */}
-            <div className="space-y-3 relative z-10">
-              <label className="text-[10px] font-bold text-suno-accent uppercase tracking-widest block">
-                Languages (Code-Switching)
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {LANGS.map((l) => {
-                  const isSelected = langs.includes(l);
-                  return (
-                    <button
-                      key={l}
-                      onClick={() => toggleLang(l)}
-                      className={`px-4 py-2 rounded-full text-xs font-bold border transition-all active:scale-95 ${
-                        isSelected
-                          ? "bg-suno-accent/15 border-suno-accent/30 text-suno-accent"
-                          : "bg-suno-gray-800 text-gray-400 border-suno-gray-700 hover:border-suno-gray-600 hover:text-white"
-                      }`}
-                    >
-                      {l}
-                    </button>
-                  );
-                })}
-              </div>
+            {/* Advanced Settings Toggle */}
+            <div className="pt-2 z-10 relative border-t border-suno-gray-800/40">
+              <button
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                className="flex items-center gap-2 text-xs font-bold text-gray-400 hover:text-white transition-colors py-2 px-1 focus:outline-none"
+                type="button"
+              >
+                <span 
+                  className="material-symbols-outlined text-lg transition-transform duration-200" 
+                  style={{ transform: showAdvanced ? "rotate(90deg)" : "none" }}
+                >
+                  chevron_right
+                </span>
+                <span>{showAdvanced ? "Hide Advanced Settings" : "Show Advanced Settings"}</span>
+              </button>
             </div>
 
-            {/* Key Selection */}
-            <div className="space-y-3 relative z-10">
-              <label className="text-[10px] font-bold text-suno-accent uppercase tracking-widest block">
-                Target Musical Key
-              </label>
-              <div className="flex flex-wrap gap-1.5">
-                {KEYS.map((k) => (
-                  <button
-                    key={k}
-                    onClick={() => setMusicKey(k)}
-                    className={`w-9 h-9 rounded-xl text-xs font-bold border transition-all active:scale-95 flex items-center justify-center ${
-                      musicKey === k
-                        ? "bg-suno-accent/15 border-suno-accent/30 text-suno-accent"
-                        : "bg-suno-gray-800 text-gray-400 border-suno-gray-700 hover:border-suno-gray-600 hover:text-white"
-                    }`}
-                  >
-                    {k}
-                  </button>
-                ))}
-              </div>
-            </div>
+            {/* Collapsible Advanced Folder */}
+            {showAdvanced && (
+              <div className="space-y-6 pt-4 border-t border-suno-gray-800/60 z-10 relative">
+                {/* Language Selection */}
+                <div className="space-y-3">
+                  <label className="text-[10px] font-bold text-gray-300 uppercase tracking-widest block">
+                    Languages (Code-Switching)
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {LANGS.map((l) => {
+                      const isSelected = langs.includes(l);
+                      return (
+                        <button
+                          key={l}
+                          onClick={() => toggleLang(l)}
+                          className={`px-4 py-2 rounded-full text-xs font-bold border transition-all active:scale-95 ${
+                            isSelected
+                              ? "bg-suno-accent/15 border-suno-accent/30 text-suno-accent"
+                              : "bg-suno-gray-800 text-gray-400 border-suno-gray-700 hover:border-suno-gray-600 hover:text-white"
+                          }`}
+                        >
+                          {l}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
 
-            {/* Harmony Structure Options */}
-            <div className="space-y-3 relative z-10">
-              <label className="text-[10px] font-bold text-suno-accent uppercase tracking-widest block">
-                Harmony Arrangement
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  { val: "solo", label: "Solo Worship Leader" },
-                  { val: "sat", label: "Multipart Choir (S.A.T.)" },
-                ].map((o) => (
-                  <button
-                    key={o.val}
-                    onClick={() => setHarmony(o.val)}
-                    className={`p-4 rounded-2xl border text-xs font-bold text-left transition-all active:scale-95 ${
-                      harmony === o.val
-                        ? "bg-suno-accent/15 border-suno-accent/30 text-suno-accent"
-                        : "bg-suno-gray-800 border-suno-gray-700 text-gray-400 hover:border-suno-gray-600"
-                    }`}
-                  >
-                    {o.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+                {/* Key Selection */}
+                <div className="space-y-3">
+                  <label className="text-[10px] font-bold text-gray-300 uppercase tracking-widest block">
+                    Target Musical Key
+                  </label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {KEYS.map((k) => (
+                      <button
+                        key={k}
+                        onClick={() => setMusicKey(k)}
+                        className={`w-9 h-9 rounded-xl text-xs font-bold border transition-all active:scale-95 flex items-center justify-center ${
+                          musicKey === k
+                            ? "bg-suno-accent/15 border-suno-accent/30 text-suno-accent"
+                            : "bg-suno-gray-800 text-gray-400 border-suno-gray-700 hover:border-suno-gray-600 hover:text-white"
+                        }`}
+                      >
+                        {k}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-            {/* Scriptural Anchor */}
-            <div className="space-y-3 relative z-10">
-              <label className="text-[10px] font-bold text-suno-accent uppercase tracking-widest block">
-                Scriptural Anchor (Optional)
-              </label>
-              <input
-                value={scripture}
-                onChange={(e) => setScripture(e.target.value)}
-                placeholder="e.g. Psalm 100:4, Romans 8:31"
-                className="w-full bg-suno-gray-800 border border-suno-gray-700 focus:border-suno-accent focus:ring-1 focus:ring-suno-accent rounded-2xl p-4 text-sm text-white placeholder:text-gray-500 outline-none transition-all"
-              />
-              <p className="text-[10px] text-gray-500 italic">
-                Our songwriter model will align the lyrics to the theme and values of this scripture.
-              </p>
-            </div>
+                {/* Harmony Structure Options */}
+                <div className="space-y-3">
+                  <label className="text-[10px] font-bold text-gray-300 uppercase tracking-widest block">
+                    Harmony Arrangement
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    {[
+                      { val: "solo", label: "Solo Worship Leader" },
+                      { val: "sat", label: "Multipart Choir (S.A.T.)" },
+                    ].map((o) => (
+                      <button
+                        key={o.val}
+                        onClick={() => setHarmony(o.val)}
+                        className={`p-4 rounded-2xl border text-xs font-bold text-left transition-all active:scale-95 ${
+                          harmony === o.val
+                            ? "bg-suno-accent/15 border-suno-accent/30 text-suno-accent"
+                            : "bg-suno-gray-800 border-suno-gray-700 text-gray-400 hover:border-suno-gray-600"
+                        }`}
+                      >
+                        {o.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Scriptural Anchor */}
+                <div className="space-y-3">
+                  <label className="text-[10px] font-bold text-gray-300 uppercase tracking-widest block">
+                    Scriptural Anchor (Optional)
+                  </label>
+                  <input
+                    value={scripture}
+                    onChange={(e) => setScripture(e.target.value)}
+                    placeholder="e.g. Psalm 100:4, Romans 8:31"
+                    className="w-full bg-suno-gray-800 border border-suno-gray-700 focus:border-suno-accent focus:ring-1 focus:ring-suno-accent rounded-2xl p-4 text-sm text-white placeholder:text-gray-500 outline-none transition-all"
+                  />
+                </div>
+              </div>
+            )}
 
             {/* Create Button */}
             <button
               onClick={() => onGenerate({ theme, musicKey, langs, genre, harmony, scripture })}
               className="w-full bg-suno-accent text-white py-4 rounded-xl font-bold text-lg hover:scale-[1.02] active:scale-[0.98] transition-transform shadow-lg shadow-suno-accent/20 flex items-center justify-center gap-2 mt-8"
             >
-              <span className="material-symbols-outlined text-xl">bolt</span>
-              Generate Gospel Masterpiece
+              <span className="material-symbols-outlined text-xl">auto_awesome</span>
+              Generate New Song
             </button>
           </div>
         </div>
