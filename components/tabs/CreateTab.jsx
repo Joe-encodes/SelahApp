@@ -166,13 +166,15 @@ export const CreateTab = ({ onGenerate }) => {
             )}
 
             {/* Create Button */}
-            <button
-              onClick={() => onGenerate({ theme, musicKey, langs, genre, harmony, scripture })}
-              className="w-full bg-suno-accent text-white py-4 rounded-xl font-bold text-lg hover:scale-[1.02] active:scale-[0.98] transition-transform shadow-lg shadow-suno-accent/20 flex items-center justify-center gap-2 mt-8"
-            >
-              <span className="material-symbols-outlined text-xl">auto_awesome</span>
-              Generate New Song
-            </button>
+            <div className="flex justify-end pt-4">
+              <button
+                onClick={() => onGenerate({ theme, musicKey, langs, genre, harmony, scripture })}
+                className="flex items-center gap-2 bg-suno-accent hover:bg-suno-accent/90 text-white px-5 py-3 rounded-full font-bold text-xs md:text-sm shadow-md active:scale-95 transition-transform"
+              >
+                <span className="material-symbols-outlined text-base">auto_awesome</span>
+                <span>Generate New Song</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -198,11 +200,16 @@ export const CreateTab = ({ onGenerate }) => {
                     }`}
                   >
                     <span className="text-2xl select-none">{g.icon}</span>
-                    <div>
-                      <p className="text-xs font-bold text-white">{g.label}</p>
+                    <div className="flex-grow">
+                      <p className={`text-xs font-bold ${isSelected ? "text-white" : "text-gray-300"}`}>{g.label}</p>
                       <p className="text-[9px] text-gray-500 uppercase tracking-wider mt-0.5">
                         Select Beat & Rhythm
                       </p>
+                    </div>
+                    <div className="ml-auto flex items-center justify-center text-gray-500">
+                      <span className={`material-symbols-outlined text-lg ${isSelected ? "text-suno-accent" : ""}`}>
+                        {isSelected ? "radio_button_checked" : "radio_button_unchecked"}
+                      </span>
                     </div>
                   </button>
                 );

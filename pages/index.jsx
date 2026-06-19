@@ -14,6 +14,7 @@ export default function SelahApp() {
   const [activeSong, setActiveSong] = useState(null);
   const [generating, setGenerating] = useState(false);
   const [isPlayerExpanded, setIsPlayerExpanded] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const chords = activeSong?.chords && activeSong.chords.length > 0 ? activeSong.chords : ["C", "F", "G", "Am"];
   const genre = activeSong?.genre || "Contemporary";
@@ -84,9 +85,9 @@ export default function SelahApp() {
           <div className="w-24 h-24 rounded-2xl overflow-hidden bg-suno-gray-900 border border-suno-gray-800 flex items-center justify-center shadow-lg mb-3">
             <img src="/logo.png" alt="Selah Logo" className="w-full h-full object-cover" />
           </div>
-          <div className="text-center">
-            <h1 className="font-display text-xl text-white font-bold tracking-tight">SelahAI</h1>
-            <p className="text-[10px] uppercase tracking-widest text-gray-400 font-bold">Creative Studio</p>
+          <div className="text-center mt-2">
+            <h1 className="font-serif text-2xl text-white tracking-[0.25em] uppercase font-medium">Selah</h1>
+            <p className="text-[9px] uppercase tracking-[0.2em] text-gray-400 font-semibold mt-1">Gospel Music App</p>
           </div>
         </div>
 
@@ -123,6 +124,23 @@ export default function SelahApp() {
 
       {/* Main Content Area */}
       <main className={`md:ml-64 ${activeSong ? "pb-44" : "pb-24"} min-h-screen transition-all duration-300`}>
+        {/* Mobile Top Navbar */}
+        <header className="h-16 border-b border-suno-gray-800 flex items-center justify-between px-6 bg-suno-black/85 backdrop-blur-md sticky top-0 z-40 md:hidden">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg overflow-hidden bg-suno-gray-950 border border-suno-gray-800 flex items-center justify-center shadow-md">
+              <img src="/logo.png" alt="Selah Logo" className="w-full h-full object-cover" />
+            </div>
+            <h1 className="font-serif text-base text-white tracking-[0.15em] uppercase font-normal mt-0.5">Selah</h1>
+          </div>
+          <button 
+            onClick={() => setMenuOpen(true)}
+            className="p-2 text-gray-400 hover:text-white transition-colors active:scale-90"
+            title="Open Navigation Menu"
+          >
+            <span className="material-symbols-outlined text-2xl">menu</span>
+          </button>
+        </header>
+
         {/* Top Header Anchor */}
         <header className="h-20 border-b border-suno-gray-800 flex items-center justify-between px-8 bg-suno-black/80 backdrop-blur-md sticky top-0 z-40 hidden md:flex">
           <div className="flex items-center gap-6">
@@ -262,6 +280,59 @@ export default function SelahApp() {
             audioState={audioState} 
             onClose={() => setIsPlayerExpanded(false)} 
           />
+        </div>
+      )}
+
+      {/* Full-Screen Drawer Menu (Hamburger Overlay) */}
+      {menuOpen && (
+        <div className="fixed inset-0 bg-suno-black/95 backdrop-blur-2xl z-[150] flex flex-col items-center justify-center space-y-8 animate-fadeIn">
+          <button 
+            onClick={() => setMenuOpen(false)}
+            className="absolute top-6 right-6 p-2.5 text-gray-400 hover:text-white transition-colors"
+            title="Close Menu"
+          >
+            <span className="material-symbols-outlined text-2xl">close</span>
+          </button>
+          <div className="flex flex-col items-center mb-4">
+            <div className="w-20 h-20 rounded-2xl overflow-hidden bg-suno-gray-950 border border-suno-gray-800 flex items-center justify-center shadow-lg mb-3">
+              <img src="/logo.png" alt="Selah Logo" className="w-full h-full object-cover" />
+            </div>
+            <h1 className="font-serif text-2xl text-white tracking-[0.25em] uppercase font-medium">Selah</h1>
+            <p className="text-[10px] uppercase tracking-[0.2em] text-gray-400 font-semibold mt-1">Gospel Music App</p>
+          </div>
+          <nav className="flex flex-col items-center space-y-6">
+            <button
+              onClick={() => { setTab("home"); setMenuOpen(false); }}
+              className={`text-xl font-medium transition-colors ${tab === "home" ? "text-suno-accent" : "text-gray-400 hover:text-white"}`}
+            >
+              Discover
+            </button>
+            <button
+              onClick={() => { setTab("create"); setMenuOpen(false); }}
+              className={`text-xl font-medium transition-colors ${tab === "create" ? "text-suno-accent" : "text-gray-400 hover:text-white"}`}
+            >
+              Create Studio
+            </button>
+            <button
+              onClick={() => { setTab("library"); setMenuOpen(false); }}
+              className={`text-xl font-medium transition-colors ${tab === "library" ? "text-suno-accent" : "text-gray-400 hover:text-white"}`}
+            >
+              Library
+            </button>
+            <div className="w-16 h-[1px] bg-suno-gray-800"></div>
+            <button
+              onClick={() => { setTab("home"); setMenuOpen(false); }}
+              className="text-base text-gray-500 hover:text-white transition-colors"
+            >
+              About
+            </button>
+            <button
+              onClick={() => { setTab("home"); setMenuOpen(false); }}
+              className="text-base text-gray-500 hover:text-white transition-colors"
+            >
+              Contact
+            </button>
+          </nav>
         </div>
       )}
     </div>
