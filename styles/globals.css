@@ -1,6 +1,4 @@
 @import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined');
 
 
 @theme {
@@ -8,8 +6,11 @@
   --font-display: "Outfit", sans-serif;
 
   --color-suno-black: #0a0a0a;
+  --color-suno-gray-950: #0d0d0d;
   --color-suno-gray-900: #121212;
+  --color-suno-gray-850: #181818;
   --color-suno-gray-800: #1e1e1e;
+  --color-suno-gray-750: #242424;
   --color-suno-gray-700: #2a2a2a;
   --color-suno-gray-600: #3a3a3a;
   --color-suno-accent: #3b82f6;
@@ -98,4 +99,14 @@
 }
 .anim-generating {
     animation: pulse-border 2s infinite ease-in-out;
+}
+@keyframes fadeIn {
+    from { opacity: 0; transform: scale(0.97); }
+    to   { opacity: 1; transform: scale(1); }
+}
+.animate-fadeIn {
+    animation: fadeIn 0.2s ease-out forwards;
+}
+.pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
 }

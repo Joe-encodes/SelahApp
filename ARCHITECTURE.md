@@ -1,74 +1,127 @@
-# SelahAI: Architecture & Cloud Integration Handoff
+# SelahAI: Technical Architecture & System Walkthrough
 
-**To:** Backend Development Team  
-**Subject:** System Architecture, AI Integration, and Cloud Strategy
-
-This document details the architectural decisions made for the SelahAI Kingdom Hack 3.0 MVP, specifically regarding our AI text generation, local audio synthesis, and our strategy for heavy GPU machine learning models (ACE-Step).
+This document outlines the architecture, data flows, system constraints, and file-by-file blueprints of the SelahAI Gospel Music Co-Writer application.
 
 ---
 
-## 1. System Overview
-SelahAI currently operates on a Next.js (React) stack. The application relies on two primary AI workflows:
-1. **Lyric & Chord Generation:** Powered by a lightweight REST API call to Groq (Llama-3.3-70b).
-2. **Audio Generation:** Split into two phases—a local Web Audio API for instant rehearsal, and a Cloud-hosted ACE-Step model for final stem separation.
+## 1. Executive Summary & Constraints
+
+### What Has Been Achieved
+- **Full UI Makeover:** Formatted dark aesthetic styled after the Suno reference app, featuring responsive mobile navigation drawer, clean dashboard columns, Genre vibe presets, and a collapsible advanced settings drawer.
+- **Real-Time Choir Practice Prompter:** Dynamic visual chords arranger, phonetic vowel-morphing singing engine, and synchronization of the lyrics prompter timeline directly to active chord beats.
+- **Instrument Mixer Workstation:** Dynamic mixer sliders for Piano, Percussion, Bass, and Guitar, controlling gain nodes with a 48-hour session expiration lock.
+- **Production Stems & MIDI Exports:** MIDI generation engine for custom section arrangements, and local browser-based `OfflineAudioContext` WAV backing track synthesis.
+- **FastAPI Backend (Python):** Complete, lightweight FastAPI server running locally alongside the Next.js frontend to offload symbolic MIDI creation and CPU additive vowel-synthesis.
+- **Offline Shell & Database Caching:** Custom Service Worker shell caching with IndexedDB caching of all generated song metadata.
+
+### Constraints & Challenges Faced
+1. **CPU/Browser-First Audio Synthesis:** Heavy ML models like ACE-Step require high GPU power and 10GB+ weights files. To avoid live pitch delays or thermal throttling on client CPUs, we developed a pure-Python additive synthesizer for the server and a matching Web Audio synthesizer for the browser.
+2. **Vocal Articulation (Vowel Morphing):** To avoid flat "humming" tones, a phonetic vowel parser extracts vowel patterns from lyric lines, automating resonant bandpass filter frequencies (F1, F2) over the note's duration.
+3. **Legato/Silence Legibility:** Bridging notes smoothly without popping required exact ADSR envelopes combined with a `0.90` duration multiplier for active notes to leave a brief legato release gap.
+
+### The "12-13 Second Output" Explanation
+The generated audio files (e.g., backing tracks or synthesized vocal stems) are typically 12 to 13 seconds long because of the following math:
+- **Default Tempo:** 72 BPM (Beats Per Minute)
+- **Seconds Per Beat (SPB):** $\frac{60 \text{ seconds}}{72 \text{ BPM}} \approx 0.833 \text{ seconds per beat}$
+- **Bar Duration (4 beats):** $4 \times 0.833 \text{s} \approx 3.333 \text{ seconds per bar}$
+- **Standard Loop Progression:** 4 chords (e.g., `G - C - D - Em`)
+- **Total Song Duration:** $4 \text{ bars} \times 3.333 \text{s} \approx 13.33 \text{ seconds}$
+- **Synthesis Active Note Time:** $\text{bar duration} \times 0.90 \text{ (legato multiplier)} \approx 3.0 \text{ seconds of active sound per note}$ followed by $0.33 \text{ seconds of release silence}$.
+- **Result:** The final rendered WAV buffer has a duration of exactly **13.33 seconds** (which compresses/rounds to 12-13s in players).
 
 ---
 
-## 2. Text Generation (Groq / Llama 3)
-We are using `llama-3.3-70b-versatile` via the Groq API for lyric and chord generation. 
-*   **Why Groq?** We initially attempted to use Google Gemini, but encountered API version deprecations and quota limitations. Groq was chosen for its near-instantaneous inference speed, which is critical for a fast UX.
-*   **Implementation:** Located in `pages/api/generate.js`. It uses strict prompt engineering to force the LLM to return a predefined JSON schema (Verse, Chorus, Bridge, Tag) along with a mathematically correct 1-4-5-6 chord progression based on the user's selected musical key.
+## 2. High-Level Data Flows (Medium Version)
 
----
-
-## 3. Audio Architecture: Why We Rejected Local ACE-Step
-ACE-Step is a powerful, open-source audio foundation model that can generate distinct vocal stems (Soprano, Alto, Tenor). However, we explicitly decided **against** running it locally within the Next.js environment for the MVP.
-
-**The Constraints (Why not local?):**
-1. **Hardware Limitations:** ACE-Step requires downloading a 10GB+ weight file and running heavy Python inference. Running this on a standard laptop CPU would take 15–30 minutes per song and risk thermal throttling ("melting the CPU") or out-of-memory (OOM) crashes during the live pitch.
-2. **Language Barrier:** Our stack is Node.js/React. ACE-Step requires PyTorch/Python.
-
-**The Solution:**
-For the live MVP, we built a zero-latency **Web Audio API Engine** (`lib/useGospelAudio.js`) that synthesizes piano chords and percussion locally in the browser based on the Groq-generated chords. This ensures the app always produces sound instantly for the demo without any backend overhead.
-
----
-
-## 4. Phase 2: The ACE-Step Cloud Architecture
-To achieve the "True and True" AI choir voices, we are adopting a **Microservices Cloud API Architecture**. The heavy lifting will be offloaded to a dedicated GPU server (e.g., RunPod, Hugging Face Endpoints, or AWS EC2).
-
-### How the Cloud Integration Works
-1.  **Dedicated GPU Node:** ACE-Step will be wrapped in a FastAPI (Python) server and deployed to a Cloud GPU provider.
-2.  **Frontend Request:** The Next.js app sends the lyrics to our backend.
-3.  **Backend Proxy:** Our Next.js API acts as a secure proxy, forwarding the payload to the Cloud GPU endpoint.
-4.  **Response:** The Cloud GPU processes the audio in ~10-30 seconds and returns URLs to the generated `.mp3` or `.wav` stems.
-
-### The Current "Mockup" Implementation
-Because we did not rent a GPU server for the hackathon (to save time and money), we have built a **perfect simulation** of this cloud architecture to show the judges.
-
-**Backend Mock (`pages/api/stems.js`):**
-```javascript
-// This simulates the network latency and GPU processing time
-await new Promise(resolve => setTimeout(resolve, 10000));
-
-// It then returns URLs exactly as a cloud server would
-return res.status(200).json({
-  stems: {
-    soprano: "/stems/soprano.mp3",
-    alto: "/stems/alto.mp3",
-    tenor: "/stems/tenor.mp3"
-  }
-});
+### A. Song Generation & Retrieval Flow
+```
+[User Form Submit]
+       │ (Prompt parameters: Genre, Key, Vibe, Topic)
+       ▼
+[Next.js API: pages/api/generate.js]
+       │ (Sends engineered prompts to Groq API)
+       ▼
+[Groq LLM: Llama-3.3-70b] ──► (Returns structured JSON song model)
+       │
+       ▼
+[Next.js API response] ──► [IndexedDB Cache] ──► [UI State Render]
 ```
 
-**Frontend Mock (`components/Player.jsx`):**
-The frontend is unaware this is a mockup. It handles the asynchronous state perfectly:
-1. User clicks "Generate ACE-Step Cloud Stems".
-2. UI state `isGeneratingStems` is set to true.
-3. The button disables and shows a spinning loader: *"Communicating with Cloud GPU..."*
-4. After 10 seconds, the frontend receives the URLs from the API and loads them into HTML5 `<audio>` tags in the Stem Mixer.
+### B. Rehearsal Playback & Audio Synthesis Flow
+```
+[User Clicks Play in Dashboard]
+       │
+       ├─► [Web Audio API: useGospelAudio.js] ──► Synthesizes Piano, Bass, Guitar oscillators
+       │                                         and schedules Drum beats in real-time.
+       │
+       └─► [Player Prompt Timeline] ──► Highlight active chord box and update prompter
+                                         lyrics index dynamically synced to beat timer.
+```
 
-### Backend Team Action Items (Post-Hackathon)
-To make this real after the hackathon, the backend team simply needs to:
-1. Provision a RunPod Serverless endpoint or an AWS EC2 instance.
-2. Deploy the ACE-Step Python API to that instance.
-3. Open `pages/api/stems.js`, delete the `setTimeout` mockup, and replace it with a standard `fetch('https://your-runpod-url.com/generate')`.
+---
+
+## 3. File-by-File Blueprint & Specifications (Long Version)
+
+### A. Python Backend Component (`/backend`)
+
+#### 1. [backend/main.py](file:///c:/Users/ESTHER/Desktop/SelahApp/backend/main.py)
+- **Role:** REST API Entrypoint (FastAPI).
+- **Functions:**
+  - `generate_melody(MelodyRequest)`: Endpoint `/api/v1/melody` generates backing track MIDI files using a background thread pool executor.
+  - `generate_stems(StemsRequest)`: Endpoint `/api/v1/stems` initiates vocal stem synthesis.
+  - `get_stem_status(task_id)`: Checks progress of ongoing background voice generation tasks.
+  - `download_file(file_name)`: Serves synthesized WAV or MIDI tracks directly to the client browser.
+
+#### 2. [backend/synth_engine.py](file:///c:/Users/ESTHER/Desktop/SelahApp/backend/synth_engine.py)
+- **Role:** Pure-Python additive synthesizer.
+- **Key Modules:**
+  - `make_adsr()`: Builds linear attack/decay/sustain/release curves to scale wave amplitudes.
+  - `BiquadBandpass`: Implements digital IIR biquad bandpass filter coefficients dynamically adjusted mid-loop to sculpt voice frequencies.
+  - `synthesize_note()`: Combines three detuned oscillators per note (ensemble chorus effect), sinusoidal vibrato LFO, and parallel formant filters morphing vowels.
+  - `render_voice_stem_wav()`: Integrates chords, lyrics, and tempo to output high-fidelity vocal stems.
+
+#### 3. [backend/midi_generator.py](file:///c:/Users/ESTHER/Desktop/SelahApp/backend/midi_generator.py)
+- **Role:** Symbolic MIDI generator.
+- **Key Logic:**
+  - Instantiates `MIDIFile` tracks for different channels: Piano, Bass, Guitar, and Percussion.
+  - Automates drum fills (kick, snare, hihat velocity rolls) on beat 4 of transition bars based on section structure flags.
+
+#### 4. [backend/music_theory.py](file:///c:/Users/ESTHER/Desktop/SelahApp/backend/music_theory.py)
+- **Role:** Mathematical Music Theory Resolver.
+- **Formulas:**
+  - Resolves note numbers and transposition steps from string pitch aliases (e.g. `C#4` -> `61`).
+  - Contains pitch frequency tables mapping roots to chord harmonics.
+
+---
+
+### B. Frontend Next.js Client Component
+
+#### 1. [lib/useGospelAudio.js](file:///c:/Users/ESTHER/Desktop/SelahApp/lib/useGospelAudio.js)
+- **Role:** Web Audio API synthesis engine hook.
+- **Key Features:**
+  - Schedules hihats, kicks, snares, and log drums via precise `AudioContext` lookahead timers.
+  - Ported phonetic parser automating Web Audio `BiquadFilterNode` parameters for live local choir singing.
+  - Exposes playback hooks: `play`, `pause`, `stop`, `volumes`, and client-side WAV/MIDI file renders.
+
+#### 2. [components/Player.jsx](file:///c:/Users/ESTHER/Desktop/SelahApp/components/Player.jsx)
+- **Role:** Choir Desk dashboard and rehearsal UI.
+- **Core Elements:**
+  - Synchronizes active lyrics and part indexes via `activeLyricIdx` computed from the current chord playback step.
+  - Renders the **Arrangement Monitor** displaying dynamics (Forte, Piano, Mezzo) and active instrument channel indicators.
+  - Manages SAT Stem mixing sliders and handles local vs cloud synthesis fallbacks.
+
+#### 3. [pages/api/generate.js](file:///c:/Users/ESTHER/Desktop/SelahApp/pages/api/generate.js)
+- **Role:** LLM lyric/chords generator.
+- **Design:**
+  - Constructs system and user messages containing structural and harmonic guidelines.
+  - Calls Groq API using `llama-3.3-70b-versatile` and parses structured JSON sections list.
+
+#### 4. [lib/indexedDb.js](file:///c:/Users/ESTHER/Desktop/SelahApp/lib/indexedDb.js)
+- **Role:** Offline indexed storage.
+- **Logic:**
+  - Initializes database (`SelahDB`) storing generated songs locally to ensure persistence during offline use.
+
+#### 5. [public/sw.js](file:///c:/Users/ESTHER/Desktop/SelahApp/public/sw.js)
+- **Role:** Service worker for PWA support.
+- **Strategy:**
+  - Listens to `install` and `fetch` events to serve the HTML shell and static files directly from local cache when offline.

@@ -28,3 +28,13 @@ yarn-error.log*
 # local env files
 .env*.local
 .env
+
+# python cache
+**/venv/
+__pycache__/
+*.pyc
+
+# local generated music outputs / test outputs
+backend/outputs/
+backend/test_output/
+test_output/

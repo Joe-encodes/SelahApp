@@ -10,6 +10,7 @@ export const CreateTab = ({ onGenerate }) => {
   const [scripture, setScripture] = useState("");
   const [isAutoEnhance, setIsAutoEnhance] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [rawSongText, setRawSongText] = useState("");
 
   const toggleLang = (l) =>
     setLangs((prev) =>
@@ -56,6 +57,22 @@ export const CreateTab = ({ onGenerate }) => {
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/* Import Existing Song Textarea */}
+            <div className="space-y-3 pt-4 border-t border-suno-gray-800/40 relative z-10">
+              <label className="text-[10px] font-bold text-gray-300 uppercase tracking-widest block">
+                Or Import Existing Song (Optional - Paste Chords & Lyrics)
+              </label>
+              <textarea
+                value={rawSongText}
+                onChange={(e) => setRawSongText(e.target.value)}
+                placeholder="Paste your song text here... e.g.
+Verse 1
+[C] Lord, you are [F] good and [G] your mercy is [Am] forever..."
+                rows={4}
+                className="w-full bg-suno-gray-850 border border-suno-gray-750 focus:border-suno-accent focus:ring-1 focus:ring-suno-accent rounded-2xl p-4 text-xs md:text-sm text-white placeholder:text-gray-500 outline-none transition-all resize-none"
+              />
             </div>
 
             {/* Advanced Settings Toggle */}
@@ -168,7 +185,7 @@ export const CreateTab = ({ onGenerate }) => {
             {/* Create Button */}
             <div className="flex justify-end pt-4">
               <button
-                onClick={() => onGenerate({ theme, musicKey, langs, genre, harmony, scripture })}
+                onClick={() => onGenerate({ theme, musicKey, langs, genre, harmony, scripture, rawSongText })}
                 className="flex items-center gap-2 bg-suno-accent hover:bg-suno-accent/90 text-white px-5 py-3 rounded-full font-bold text-xs md:text-sm shadow-md active:scale-95 transition-transform"
               >
                 <span className="material-symbols-outlined text-base">auto_awesome</span>

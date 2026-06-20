@@ -20,7 +20,7 @@ const getSongCover = (song) => {
   return fallbacks[hash];
 };
 
-export const HomeTab = ({ songs, onPlay }) => {
+export const HomeTab = ({ songs, onPlay, onCreateFirst }) => {
   const featuredSong = songs[0];
   const [likedSongs, setLikedSongs] = useState({});
 
@@ -41,8 +41,8 @@ export const HomeTab = ({ songs, onPlay }) => {
         </p>
       </div>
 
-      {/* Featured Banner (Suno Style Hero) */}
-      {featuredSong && (
+      {/* Featured Banner — only shown when songs exist */}
+      {featuredSong ? (
         <section>
           <div className="relative h-64 rounded-3xl overflow-hidden mb-12 border border-suno-gray-800 group cursor-pointer" onClick={() => onPlay(featuredSong)}>
             <img 
@@ -72,6 +72,38 @@ export const HomeTab = ({ songs, onPlay }) => {
             </div>
           </div>
         </section>
+      ) : (
+        /* Empty state — no songs generated yet */
+        <section className="mb-12">
+          <div className="relative rounded-3xl overflow-hidden border border-suno-gray-800 bg-suno-gray-900 p-10 md:p-16 flex flex-col items-center justify-center text-center min-h-[260px] group">
+            <div className="absolute inset-0 opacity-20">
+              <img
+                src="https://images.unsplash.com/photo-1511192336575-5a79af67a629?q=80&w=1200"
+                className="w-full h-full object-cover"
+                alt=""
+              />
+            </div>
+            <div className="absolute inset-0 bg-gradient-to-t from-suno-gray-900 via-suno-gray-900/70 to-transparent" />
+            <div className="relative z-10 flex flex-col items-center">
+              <span className="material-symbols-outlined text-5xl text-suno-accent mb-4" style={{ fontVariationSettings: "'FILL' 1" }}>
+                auto_awesome
+              </span>
+              <h3 className="text-2xl md:text-3xl font-display font-bold text-white mb-2">
+                Your Choir Has No Songs Yet
+              </h3>
+              <p className="text-gray-400 text-sm max-w-md mb-6">
+                Generate your first AI-powered gospel arrangement. Pick a theme, key, genre, and language — and Groq AI will write it in seconds.
+              </p>
+              <button
+                onClick={onCreateFirst}
+                className="px-8 py-3 rounded-full bg-suno-accent hover:bg-suno-accent/90 text-white font-bold text-sm shadow-lg active:scale-95 transition-transform flex items-center gap-2"
+              >
+                <span className="material-symbols-outlined text-lg">add_circle</span>
+                Create Your First Song
+              </button>
+            </div>
+          </div>
+        </section>
       )}
 
       {/* Trending / Recent Grid (Suno MusicCard Style) */}
@@ -82,6 +114,12 @@ export const HomeTab = ({ songs, onPlay }) => {
           </h2>
         </div>
 
+        {songs.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <span className="material-symbols-outlined text-4xl text-gray-700 mb-3">queue_music</span>
+            <p className="text-gray-500 text-sm">No arrangements yet — generate one in Create Studio.</p>
+          </div>
+        ) : null}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {songs.map((song) => {
             const isLiked = !!likedSongs[song.id];

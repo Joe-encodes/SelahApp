@@ -7,6 +7,7 @@ import { HomeTab } from "../components/tabs/HomeTab";
 import { CreateTab } from "../components/tabs/CreateTab";
 import { LibraryTab } from "../components/tabs/LibraryTab";
 import { useGospelAudio } from "../lib/useGospelAudio";
+import { getAllSongs, saveSong } from "../lib/indexedDb";
 
 export default function SelahApp() {
   const [tab, setTab] = useState("home");
@@ -15,6 +16,7 @@ export default function SelahApp() {
   const [generating, setGenerating] = useState(false);
   const [isPlayerExpanded, setIsPlayerExpanded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [isOffline, setIsOffline] = useState(false);
 
   const chords = activeSong?.chords && activeSong.chords.length > 0 ? activeSong.chords : ["C", "F", "G", "Am"];
   const genre = activeSong?.genre || "Contemporary";
@@ -23,14 +25,53 @@ export default function SelahApp() {
   const audioState = useGospelAudio(chords, genre);
   const { isPlaying, currentChordIdx, bpm, setBpm, play, pause, stop } = audioState;
 
+  useEffect(() => {
+    // Register Service Worker
+    if (typeof window !== "undefined" && "serviceWorker" in navigator) {
+      navigator.serviceWorker
+        .register("/sw.js")
+        .then((reg) => console.log("Service Worker registered with scope:", reg.scope))
+        .catch((err) => console.error("Service Worker registration failed:", err));
+    }
+
+    // Monitor connectivity status
+    setIsOffline(!navigator.onLine);
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    // Sync state with IndexedDB cached songs
+    const loadIndexedDbSongs = async () => {
+      try {
+        const dbSongs = await getAllSongs();
+        if (dbSongs && dbSongs.length > 0) {
+          setSongs((prev) => {
+            const existingIds = new Set(prev.map((s) => s.id));
+            const uniqueDbSongs = dbSongs.filter((s) => !existingIds.has(s.id));
+            return [...uniqueDbSongs, ...prev];
+          });
+        }
+      } catch (err) {
+        console.error("Failed to load cached songs from IndexedDB:", err);
+      }
+    };
+    loadIndexedDbSongs();
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
   // Auto-play new songs when generated
-  const handleGenerate = async ({ theme, musicKey, langs, genre: selectedGenre, harmony, scripture }) => {
+  const handleGenerate = async ({ theme, musicKey, langs, genre: selectedGenre, harmony, scripture, rawSongText }) => {
     setGenerating(true);
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ theme, musicKey, langs, genre: selectedGenre, harmony, scripture }),
+        body: JSON.stringify({ theme, musicKey, langs, genre: selectedGenre, harmony, scripture, rawSongText }),
       });
       
       const data = await res.json();
@@ -44,8 +85,15 @@ export default function SelahApp() {
         theme,
         scripture: data.scripture || scripture || `Auto-matched for "${theme}"`,
         lyrics: data.lyrics || [],
-        chords: data.chords || []
+        chords: data.chords || [],
+        created_at: Date.now(),
       };
+      
+      try {
+        await saveSong(newSong);
+      } catch (dbErr) {
+        console.error("Failed to cache new song locally:", dbErr);
+      }
       
       setSongs((prev) => [newSong, ...prev]);
       stop();
@@ -62,6 +110,18 @@ export default function SelahApp() {
     }
   };
 
+  const handleUpdateSong = async (updatedSong) => {
+    setSongs((prev) => prev.map((s) => (s.id === updatedSong.id ? updatedSong : s)));
+    if (activeSong && activeSong.id === updatedSong.id) {
+      setActiveSong(updatedSong);
+    }
+    try {
+      await saveSong(updatedSong);
+    } catch (dbErr) {
+      console.error("Failed to persist updated song locally:", dbErr);
+    }
+  };
+
   const handleSongSelect = (song) => {
     stop();
     setActiveSong(song);
@@ -74,7 +134,6 @@ export default function SelahApp() {
       <Head>
         <title>SelahAI | Gospel Music Co-Writer</title>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
       </Head>
 
       <GeneratingModal visible={generating} />
@@ -88,6 +147,11 @@ export default function SelahApp() {
           <div className="text-center mt-2">
             <h1 className="font-serif text-2xl text-white tracking-[0.25em] uppercase font-medium">Selah</h1>
             <p className="text-[9px] uppercase tracking-[0.2em] text-gray-400 font-semibold mt-1">Gospel Music App</p>
+            {/* Offline status badge */}
+            <div className="mt-3 flex items-center justify-center gap-1.5 bg-suno-gray-950 px-3 py-1 rounded-full border border-suno-gray-800 w-fit mx-auto">
+              <span className={`w-2 h-2 rounded-full ${isOffline ? "bg-red-500" : "bg-emerald-500 animate-pulse"}`}></span>
+              <span className="text-[9px] uppercase font-bold text-gray-400">{isOffline ? "Offline Mode" : "Online Mode"}</span>
+            </div>
           </div>
         </div>
 
@@ -131,6 +195,7 @@ export default function SelahApp() {
               <img src="/logo.png" alt="Selah Logo" className="w-full h-full object-cover" />
             </div>
             <h1 className="font-serif text-base text-white tracking-[0.15em] uppercase font-normal mt-0.5">Selah</h1>
+            <span className={`w-2 h-2 rounded-full ${isOffline ? "bg-red-500" : "bg-emerald-500 animate-pulse"} ml-1.5`} title={isOffline ? "Offline Mode" : "Online Mode"}></span>
           </div>
           <button 
             onClick={() => setMenuOpen(true)}
@@ -160,7 +225,7 @@ export default function SelahApp() {
 
         {/* Dynamic Tab Render */}
         <div className="px-4 md:px-8 pt-6">
-          {tab === "home" && <HomeTab songs={songs} onPlay={handleSongSelect} />}
+          {tab === "home" && <HomeTab songs={songs} onPlay={handleSongSelect} onCreateFirst={() => setTab("create")} />}
           {tab === "create" && <CreateTab onGenerate={handleGenerate} />}
           {tab === "library" && <LibraryTab songs={songs} onPlay={handleSongSelect} />}
         </div>
@@ -168,79 +233,89 @@ export default function SelahApp() {
 
       {/* Persistent Player Bar */}
       {activeSong && (
-        <footer className="fixed bottom-0 left-0 w-full bg-suno-gray-900 border-t border-suno-gray-800 h-24 z-[60] flex items-center px-4 md:px-8 shadow-[0_-8px_30px_rgb(0,0,0,0.5)] justify-between">
-          <div className="flex items-center gap-4 w-1/3 md:w-1/4">
-            <div 
+        <footer className="fixed bottom-0 left-0 w-full bg-suno-gray-900 border-t border-suno-gray-800 z-[60] flex items-center px-4 md:px-8 shadow-[0_-8px_30px_rgb(0,0,0,0.5)] justify-between" style={{ height: "5rem", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
+          {/* Song Info */}
+          <div className="flex items-center gap-3 w-1/3 md:w-1/4 min-w-0">
+            <div
               onClick={() => setIsPlayerExpanded(true)}
-              className="w-14 h-14 rounded-lg bg-suno-gray-800 overflow-hidden flex-shrink-0 shadow-lg border border-suno-gray-700 cursor-pointer group relative"
+              className="w-12 h-12 md:w-14 md:h-14 rounded-lg bg-suno-gray-800 overflow-hidden flex-shrink-0 shadow-lg border border-suno-gray-700 cursor-pointer group relative"
             >
               <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                <span className="material-symbols-outlined text-white text-xl">open_in_full</span>
+                <span className="material-symbols-outlined text-white text-lg">open_in_full</span>
               </div>
               <div className="w-full h-full bg-suno-gray-900 flex items-center justify-center">
                 <img src="/logo.png" alt="Selah Logo" className="w-full h-full object-cover" />
               </div>
             </div>
-            <div className="truncate cursor-pointer" onClick={() => setIsPlayerExpanded(true)}>
-              <h5 className="text-sm font-bold text-white truncate">{activeSong.title}</h5>
-              <p className="text-xs text-gray-400 truncate">{activeSong.genre} · Key of {activeSong.musicKey || chords[0]}</p>
+            <div className="truncate cursor-pointer min-w-0" onClick={() => setIsPlayerExpanded(true)}>
+              <h5 className="text-sm font-bold text-white truncate leading-tight">{activeSong.title}</h5>
+              <p className="text-xs text-gray-400 truncate leading-tight">{activeSong.genre} · Key of {activeSong.musicKey || chords[0]}</p>
             </div>
           </div>
 
-          <div className="flex-1 flex flex-col items-center max-w-2xl px-4">
-            <div className="flex items-center gap-6 mb-2">
-              <button 
+          {/* Center Controls */}
+          <div className="flex-1 flex flex-col items-center min-w-0 px-3 md:px-4">
+            <div className="flex items-center gap-4 md:gap-6 mb-1.5">
+              <button
                 onClick={stop}
                 className="text-gray-400 hover:text-white transition-colors"
                 title="Stop"
               >
-                <span className="material-symbols-outlined">stop</span>
+                <span className="material-symbols-outlined text-xl">stop</span>
               </button>
-              <button 
-                onClick={() => isPlaying ? pause() : play()}
-                className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-lg"
+              <button
+                onClick={() => (isPlaying ? pause() : play())}
+                className="w-9 h-9 md:w-10 md:h-10 rounded-full bg-white text-black flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-lg"
                 title={isPlaying ? "Pause" : "Play"}
               >
-                <span className="material-symbols-outlined text-[24px]" style={{ fontVariationSettings: "'FILL' 1" }}>
+                <span className="material-symbols-outlined text-[22px]" style={{ fontVariationSettings: "'FILL' 1" }}>
                   {isPlaying ? "pause" : "play_arrow"}
                 </span>
               </button>
-              <button 
+              <button
                 onClick={() => setIsPlayerExpanded(true)}
-                className="text-gray-400 hover:text-white transition-colors flex items-center"
+                className="text-gray-400 hover:text-white transition-colors"
                 title="Open Choir Desk"
               >
-                <span className="material-symbols-outlined">equalizer</span>
+                <span className="material-symbols-outlined text-xl">equalizer</span>
               </button>
             </div>
-            {/* Live Chord Progress indicator */}
-            <div className="w-full flex items-center gap-3">
-              <span className="text-[10px] font-mono text-gray-400">Chords:</span>
-              <div className="flex-grow flex gap-1 justify-center">
-                {chords.map((chord, idx) => {
+            {/* Live Chord Progress Indicator */}
+            <div className="w-full flex items-center gap-2 overflow-hidden">
+              <span className="text-[9px] font-mono text-gray-500 shrink-0">Chords:</span>
+              <div className="flex gap-1 overflow-hidden min-w-0">
+                {chords.slice(0, 8).map((chord, idx) => {
                   const isActive = isPlaying && currentChordIdx === idx;
                   return (
-                    <span 
-                      key={idx} 
-                      className={`px-2 py-0.5 rounded text-xs font-mono border transition-all ${
-                        isActive ? "bg-suno-accent/20 text-suno-accent border-suno-accent/40 font-bold scale-105" : "bg-suno-gray-800 text-gray-400 border-transparent"
+                    <span
+                      key={idx}
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-mono border shrink-0 transition-all ${
+                        isActive
+                          ? "bg-suno-accent/20 text-suno-accent border-suno-accent/40 font-bold scale-105"
+                          : "bg-suno-gray-800 text-gray-400 border-transparent"
                       }`}
                     >
                       {chord}
                     </span>
                   );
                 })}
+                {chords.length > 8 && (
+                  <span className="text-[9px] text-gray-600 font-mono self-center shrink-0">
+                    +{chords.length - 8}
+                  </span>
+                )}
               </div>
-              <span className="text-[11px] font-mono text-suno-accent font-bold">{bpm} BPM</span>
+              <span className="text-[10px] font-mono text-suno-accent font-bold ml-auto shrink-0">{bpm}</span>
             </div>
           </div>
 
-          <div className="flex items-center justify-end gap-4 w-1/4 hidden md:flex">
-            <button 
+          {/* Right: Choir Desk CTA — desktop only */}
+          <div className="hidden md:flex items-center justify-end w-1/4 shrink-0">
+            <button
               onClick={() => setIsPlayerExpanded(true)}
-              className="px-4 py-2 bg-suno-accent/10 hover:bg-suno-accent/20 text-suno-accent text-xs font-bold rounded-full border border-suno-accent/20 flex items-center gap-1 transition-all"
+              className="px-4 py-2 bg-suno-accent/10 hover:bg-suno-accent/20 text-suno-accent text-xs font-bold rounded-full border border-suno-accent/20 flex items-center gap-1.5 transition-all"
             >
-              <span className="material-symbols-outlined text-[16px]">equalizer</span>
+              <span className="material-symbols-outlined text-[15px]">equalizer</span>
               Choir Desk
             </button>
           </div>
@@ -279,6 +354,7 @@ export default function SelahApp() {
             song={activeSong} 
             audioState={audioState} 
             onClose={() => setIsPlayerExpanded(false)} 
+            onUpdateSong={handleUpdateSong}
           />
         </div>
       )}
