@@ -1,80 +1,181 @@
-function truncateAtWordBoundary(text, maxLen) {
-  if (!text || text.length <= maxLen) return text;
-  const truncated = text.substring(0, maxLen);
-  const lastSpace = truncated.lastIndexOf(" ");
-  if (lastSpace !== -1) {
-    return truncated.substring(0, lastSpace).trim();
+import { createPagesServerClient } from "@supabase/auth-helpers-nextjs";
+import { z } from "zod";
+import { buildGospelProgression } from "../../lib/musicTheory";
+
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: "1mb",
+    },
+  },
+};
+
+// Input validation schema using Zod
+const GenerateSchema = z.object({
+  theme: z.string().max(100).optional().nullable(),
+  musicKey: z.string().max(10).optional().nullable(),
+  langs: z.array(z.string()).optional().nullable(),
+  genre: z.string().optional().nullable(),
+  harmony: z.string().optional().nullable(),
+  scripture: z.string().max(500).optional().nullable(),
+  rawSongText: z.string().max(4000).optional().nullable(),
+  emotional_mode: z.enum([
+    "lament_comfort",
+    "triumph_declaration",
+    "rest_surrender",
+    "wonder_intimacy",
+    "joy_celebration",
+    "defiance_warfare",
+  ]).optional().nullable(),
+  instrumentation: z.enum([
+    "full_band",
+    "vocal_piano",
+    "a_cappella",
+    "instrumental",
+  ]).optional().nullable(),
+  vocal_gender: z.enum(["m", "f", "mix", "mixed"]).optional().nullable(),
+  temperature: z.number().min(0.0).max(2.0).optional().nullable(),
+});
+
+function cleanJsonResponse(rawText) {
+  return JSON.parse(rawText.trim());
+}
+
+// Key rotation for Groq
+async function callGroq(messages, temperature = 0.7, maxTokens = 1500) {
+  const groqKeys = [
+    process.env.GROQ_API_KEY,
+    process.env.GROQ_API_KEY_2,
+    process.env.GROQ_API_KEY_3,
+    process.env.GROQ_API_KEY_4,
+  ].filter(Boolean);
+
+  if (groqKeys.length === 0) {
+    throw new Error("No GROQ_API_KEY configured.");
   }
-  return truncated.trim();
+
+  let lastError = null;
+  for (const key of groqKeys) {
+    try {
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${key}`,
+        },
+        body: JSON.stringify({
+          model: "llama-3.3-70b-versatile",
+          messages,
+          temperature,
+          max_tokens: maxTokens,
+          response_format: { type: "json_object" },
+        }),
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`HTTP ${response.status} - ${errText}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (err) {
+      console.warn(`[groq] Key rotation warning: ${err?.message || err}`);
+      lastError = err;
+    }
+  }
+  throw lastError || new Error("All Groq keys failed");
 }
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method Not Allowed" });
   }
 
-  const { theme, musicKey, langs, genre, harmony, scripture, rawSongText, emotional_mode, instrumentation, vocal_gender } = req.body;
+  // 1. Verify Authentication
+  const supabase = createPagesServerClient({ req, res });
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
 
-  // Set in stone character length limits for parameters used in Groq prompts, using word-boundary truncation
-  const cleanTheme = truncateAtWordBoundary(theme || "", 100);
-  const cleanScripture = truncateAtWordBoundary(scripture || "", 500);
-  const cleanRawSongText = truncateAtWordBoundary(rawSongText || "", 4000);
+  if (!session) {
+    return res.status(401).json({ error: "Unauthorized", message: "Please sign in to continue." });
+  }
 
-  // Read all available Groq keys for rotation
-  const groqKeys = [];
-  if (process.env.GROQ_API_KEY) groqKeys.push(process.env.GROQ_API_KEY);
-  if (process.env.GROQ_API_KEY_2) groqKeys.push(process.env.GROQ_API_KEY_2);
-  if (process.env.GROQ_API_KEY_3) groqKeys.push(process.env.GROQ_API_KEY_3);
-  if (process.env.GROQ_API_KEY_4) groqKeys.push(process.env.GROQ_API_KEY_4);
+  // 2. Validate Inputs with Zod
+  const validation = GenerateSchema.safeParse(req.body);
+  if (!validation.success) {
+    return res.status(422).json({
+      error: "validation_failed",
+      message: "Some fields are invalid. Please check your input.",
+      details: validation.error.format(),
+    });
+  }
 
-  // Helper: return a rich mock song so the UI never breaks
-  const mockSong = () => {
+  const {
+    theme,
+    musicKey,
+    langs,
+    genre,
+    scripture,
+    rawSongText,
+    emotional_mode,
+    instrumentation,
+    vocal_gender,
+    temperature,
+  } = validation.data;
+
+  const keyToUse = musicKey || "G";
+  const cleanTheme = theme || "";
+  const cleanScripture = scripture || "";
+  const cleanRawSongText = rawSongText || "";
+
+  // Fallback / Mock song builder
+  const buildMockSong = () => {
     const defaultSections = [
       {
         part: "Intro",
         lyrics: ["(Instrumental Intro)"],
-        chords: buildChords(musicKey),
-        arrangement: { dynamics: "piano", percussion: "mute" }
+        chords: buildGospelProgression(keyToUse),
+        arrangement: { dynamics: "piano", percussion: "mute" },
       },
       {
         part: "Verse 1",
         lyrics: [
           `Lord, we lift our hearts in ${cleanTheme || "worship"} today`,
-          "Every breath we breathe, Your mercies never fade away"
+          "Every breath we breathe, Your mercies never fade away",
         ],
-        chords: buildChords(musicKey),
-        arrangement: { dynamics: "mezzo", percussion: "rimshot" }
+        chords: buildGospelProgression(keyToUse),
+        arrangement: { dynamics: "mezzo", percussion: "rimshot" },
       },
       {
         part: "Chorus",
         lyrics: [
           "Hallelujah! Worthy is the Lamb!",
-          "All the glory, honour, power — praise His name!"
+          "All the glory, honour, power — praise His name!",
         ],
-        chords: buildChords(musicKey),
-        arrangement: { dynamics: "forte", percussion: "full" }
+        chords: buildGospelProgression(keyToUse),
+        arrangement: { dynamics: "forte", percussion: "full" },
       },
       {
         part: "Bridge",
         lyrics: [
           "(Leader) He is worthy — (Choir) Worthy!",
-          "(Leader) He is able — (Choir) Able!"
+          "(Leader) He is able — (Choir) Able!",
         ],
-        chords: buildChords(musicKey),
-        arrangement: { dynamics: "forte", percussion: "heavy" }
+        chords: buildGospelProgression(keyToUse),
+        arrangement: { dynamics: "forte", percussion: "heavy" },
       },
       {
-        part: "Tag",
-        lyrics: [
-          "Praise the Lord, praise the Lord, praise His holy name"
-        ],
-        chords: buildChords(musicKey),
-        arrangement: { dynamics: "piano", percussion: "light" }
-      }
+        part: "Outro",
+        lyrics: ["Praise the Lord, praise the Lord, praise His holy name"],
+        chords: buildGospelProgression(keyToUse),
+        arrangement: { dynamics: "piano", percussion: "light" },
+      },
     ];
 
     const flatLyrics = [];
-    defaultSections.forEach(section => {
+    defaultSections.forEach((section) => {
       const chordsPerLine = Math.max(1, Math.ceil(section.chords.length / section.lyrics.length));
       section.lyrics.forEach((line, li) => {
         const start = li * chordsPerLine;
@@ -84,256 +185,194 @@ export default async function handler(req, res) {
           part: section.part,
           line: line,
           chords: lineChords.length > 0 ? lineChords : [section.chords[section.chords.length - 1]],
-          arrangement: section.arrangement
+          arrangement: section.arrangement,
         });
       });
     });
 
     return {
-      title: `${cleanTheme || "Grace"} (Key of ${musicKey})`,
+      title: `${cleanTheme || "Grace"} (Key of ${keyToUse})`,
       scripture: cleanScripture || "Psalm 150:6",
       lyrics: flatLyrics,
-      chords: flatLyrics.flatMap(l => l.chords),
+      chords: flatLyrics.flatMap((l) => l.chords),
     };
   };
 
-  if (groqKeys.length === 0) {
-    console.log("⚠️  No GROQ_API_KEY found. Returning mock song.");
-    return res.status(200).json(mockSong());
-  }
+  // If we have raw song text input, process it with a single structure-focused Groq call
+  if (cleanRawSongText) {
+    try {
+      const systemMessage = {
+        role: "system",
+        content: `You are an expert Music Director and Choral Arranger. You always respond with a valid JSON object matching this schema:
+{
+  "title": "Song Title",
+  "scripture": "Scripture Anchor",
+  "sections": [
+    {
+      "part": "Intro" | "Verse 1" | "Chorus" | "Verse 2" | "Bridge" | "Outro" | "Tag",
+      "lyrics": ["Lyric line 1", "Lyric line 2"],
+      "chords": ["Chord1", "Chord2"],
+      "arrangement": { "dynamics": "piano" | "mezzo" | "forte", "percussion": "mute" | "light" | "full" | "heavy" | "solo" },
+      "production_notes": "production notes description"
+    }
+  ]
+}`,
+      };
 
-  const modeLabel = {
-    lament_comfort: "Lament & Comfort (Slow/moderate piano-led, gentle strings, comfort that sits with pain)",
-    triumph_declaration: "Triumph & Declaration (Driving mid-to-up tempo, full gospel band with horns/organ, confident testimony)",
-    rest_surrender: "Rest & Surrender (Very slow, ambient, stillness, soft pads)",
-    wonder_intimacy: "Wonder & Intimacy (Mid tempo, acoustic/piano anchor, close-mic'd vocal)",
-    joy_celebration: "Joy & Celebration (Up-tempo highlife-gospel groove, syncopated, congregation on feet)",
-    defiance_warfare: "Defiance & Warfare (Urgent percussive rhythm, layered chant choir, standing ground)",
-  }[emotional_mode] || "worshipful";
-
-  const instLabel = {
-    full_band: "Full gospel band arrangement (piano, bass, drums, guitar, horns/strings)",
-    vocal_piano: "Stripped to lead vocal and piano only",
-    a_cappella: "A cappella (voices only, choir harmony, no instruments)",
-    instrumental: "Instrumental only, no vocals",
-  }[instrumentation] || "full band with choir harmonies";
-
-  const vocalLabel = {
-    f: "a warm female lead vocalist",
-    m: "a powerful male lead vocalist",
-    mixed: "male and female vocalists sharing the lead",
-  }[vocal_gender] || "a gospel lead vocalist";
-
-  const scriptureTranslationRule = cleanScripture
-    ? `Since you are writing the song based on the scripture reference/passage: "${cleanScripture}" and the emotional mode: "${modeLabel}", do not quote the passage directly. Follow these instructions:
-1. Identify the central promise or truth in the passage.
-2. Translate it into first-person testimony — what a worshipper would sing as their own prayer, not a third-person description of the verse.
-3. Build the verse(s) around the human context or struggle the truth speaks into.
-4. Build the chorus around the declared truth itself — simple, repeatable, singable by a congregation on first hearing.
-5. If a bridge is appropriate, write a moment of surrender or breakthrough — the emotional peak of the song.
-6. Use natural Nigerian Pidgin phrasing welcome where it adds authenticity — write it as it would actually be sung, not translated English.`
-    : `Please base the song generally on the theme: ${cleanTheme || 'Grace'}. Make sure the lyrics follow a gospel structure and remain scripture-true in phrasing.`;
-
-  const prompt = cleanRawSongText
-    ? `You are an expert Music Director and Choral Arranger.
-Task: Analyze and structure the following existing raw song lyrics and chords into choir practice parts:
+      const userPrompt = `Analyze and structure the following existing raw song lyrics and chords into choir practice parts in the key of ${keyToUse}:
 "${cleanRawSongText}"
 
 Rules:
-1. Identify the Title and a relevant Scriptural Anchor for this song.
-2. Segment the lines cleanly into parts (e.g., Intro, Verse 1, Chorus, Verse 2, Bridge, Tag, Outro).
-3. If chords are written in the input text, extract them. If not, suggest a solid gospel chord progression in the key of ${musicKey}.
-4. Mark any call-and-response lines with (Leader) or (Choir) prefix on the lyric line.
-5. Return ONLY valid JSON (absolutely no markdown, no code fences, no extra text), in this exact shape:
-{
-  "title": "Song Title Here",
-  "scripture": "Book Chapter:Verse",
-  "sections": [
-    {
-      "part": "Intro",
-      "lyrics": ["(Instrumental Intro)"],
-      "chords": ["Chord1", "Chord2"],
-      "arrangement": {"dynamics": "piano", "percussion": "mute"},
-      "production_notes": "sparse opening, no vocals yet"
-    },
-    {
-      "part": "Verse 1",
-      "lyrics": ["Lyric line 1 here", "Lyric line 2 here"],
-      "chords": ["Chord1", "Chord2", "Chord3", "Chord4"],
-      "arrangement": {"dynamics": "mezzo", "percussion": "rimshot"},
-      "production_notes": "gentle verse, build towards chorus"
-    },
-    {
-      "part": "Chorus",
-      "lyrics": ["(Leader) He is worthy!", "(Choir) Worthy!"],
-      "chords": ["Chord1", "Chord2", "Chord3", "Chord4"],
-      "arrangement": {"dynamics": "forte", "percussion": "full"},
-      "production_notes": "full energy, choir at maximum, call-and-response"
-    }
-  ]
-}`
-    : `You are an expert African Gospel Songwriter and Music Theorist.
-Task: Write a full gospel song based on the following parameters:
-- Theme: ${cleanTheme}
-- Key: ${musicKey}
-- Languages: ${langs ? langs.join(', ') : 'English'} (Use natural code-switching where appropriate)
-- Genre: ${genre}
-- Scripture Anchor: ${cleanScripture || 'Choose a relevant scripture'}
-- Song Emotional Mode: ${modeLabel}
-- Instrumentation/Arrangement: ${instLabel}
-- Vocal Lead: ${vocalLabel}
+1. Segment lines cleanly into sections.
+2. If chords are in the input, extract and align them. If not, suggest a gospel progression in the key of ${keyToUse}.
+3. Call-and-response lines must be prefixed with "(Leader)" or "(Choir)".`;
 
-Scripture Translation Guidance:
-${scriptureTranslationRule}
-
-Rules:
-1. Structure MUST follow a full multi-section arrangement: Intro, Verse 1, Chorus, Verse 2, Chorus, Bridge, Tag, Outro.
-2. Include call-and-response (Leader / Choir) elements naturally in the Chorus and Bridge — mark these lines with (Leader) or (Choir) prefix on the lyric text.
-3. Use cultural African gospel idioms (e.g., "Oluwa", "Ese o", "Chineke", "Testimony", "Hallelujah", "Imela", "Nara ekele") where language allows.
-4. Suggest solid gospel chord progressions in the key of ${musicKey}. Ensure the Chorus and Bridge sections feel musically distinct from the Verses.
-5. For each section include a "production_notes" string describing emotional/instrumental feel for that section (e.g. "slow piano intro, no choir yet, lament posture" or "full choir explodes, driving highlife groove, joyful celebration").
-6. The Intro section lyrics should be ["(Instrumental Intro)"] only.
-
-Return ONLY valid JSON (absolutely no markdown, no code fences, no extra text), in this exact shape:
-{
-  "title": "Song Title Here",
-  "scripture": "Book Chapter:Verse",
-  "sections": [
-    {
-      "part": "Intro",
-      "lyrics": ["(Instrumental Intro)"],
-      "chords": ["Chord1", "Chord2"],
-      "arrangement": {"dynamics": "piano", "percussion": "mute"},
-      "production_notes": "sparse opening, single piano, no choir"
-    },
-    {
-      "part": "Verse 1",
-      "lyrics": ["Lyric line 1", "Lyric line 2"],
-      "chords": ["Chord1", "Chord2", "Chord3", "Chord4"],
-      "arrangement": {"dynamics": "mezzo", "percussion": "rimshot"},
-      "production_notes": "intimate verse, lead vocal only, gentle percussion begins"
-    },
-    {
-      "part": "Chorus",
-      "lyrics": ["(Leader) He is worthy!", "(Choir) Worthy! Hallelujah!"],
-      "chords": ["Chord1", "Chord2", "Chord3", "Chord4"],
-      "arrangement": {"dynamics": "forte", "percussion": "full"},
-      "production_notes": "full choir erupts, driving percussion, call-and-response antiphony"
-    }
-  ]
-}`;
-
-  let responseData = null;
-  let lastError = null;
-
-  for (const key of groqKeys) {
-    try {
-      console.log(`Trying Groq API key: ${key.substring(0, 12)}...`);
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${key}`
-        },
-        body: JSON.stringify({
-          model: 'llama-3.3-70b-versatile',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are an expert African Gospel Songwriter. You always respond with valid JSON only. No markdown. No explanation. Just the JSON object.'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          temperature: 0.85,
-          max_tokens: 1500,
-        })
-      });
-
-      const responseStatus = response.status;
-      const data = await response.json();
-
-      console.log(`Groq API key ${key.substring(0, 12)}... status:`, responseStatus);
-
-      if (responseStatus === 200 && !data.error) {
-        responseData = data;
-        break;
-      } else {
-        const errMsg = data.error ? data.error.message : `HTTP ${responseStatus}`;
-        console.warn(`⚠️ Key ${key.substring(0, 12)}... failed: ${errMsg}`);
-        lastError = new Error(errMsg);
-      }
-    } catch (e) {
-      console.warn(`⚠️ Key ${key.substring(0, 12)}... threw error:`, e.message);
-      lastError = e;
+      const response = await callGroq([systemMessage, { role: "user", content: userPrompt }], 0.3);
+      const parsed = cleanJsonResponse(response.choices[0].message.content);
+      const output = formatParsedSong(parsed, genre, emotional_mode, instrumentation, vocal_gender);
+      return res.status(200).json(output);
+    } catch (err) {
+      console.error("[generate] Error processing raw song text:", err?.message || err);
+      return res.status(200).json(buildMockSong());
     }
   }
 
-  if (!responseData) {
-    console.error("❌ All Groq API keys failed. Last error:", lastError ? lastError.message : "unknown");
-    return res.status(200).json(mockSong());
-  }
-
+  // Two-Call Pipeline for fresh generation
   try {
-    const data = responseData;
+    // --- Call 1: Structure & Chords (Low temperature for correctness) ---
+    const systemCall1 = {
+      role: "system",
+      content: `You are an expert African Gospel Music Director and Arranger.
+You design song structures and chord progressions.
+You must return ONLY a valid JSON object matching this schema:
+{
+  "title": "A creative title based on theme/scripture",
+  "scripture": "Relevant book chapter:verse or matching anchor",
+  "sections": [
+    {
+      "part": "Intro" | "Verse 1" | "Chorus" | "Verse 2" | "Bridge" | "Tag" | "Outro",
+      "bars": number,
+      "chords": ["Chord1", "Chord2", ...], // 1 chord per bar. Use valid gospel/jazz notation (C, Eb, F, Gm, Am7, G7, Cmaj7, etc.)
+      "arrangement": {
+        "dynamics": "piano" | "mezzo" | "forte",
+        "percussion": "mute" | "light" | "full" | "heavy" | "solo"
+      }
+    }
+  ]
+}`,
+    };
 
-    const rawText = data.choices[0].message.content.trim();
-    console.log("🎵 Groq raw response:", rawText);
+    const userCall1 = `Theme: ${cleanTheme || "Grace"}
+Key: ${keyToUse}
+Genre: ${genre || "Contemporary"}
+Scripture hint: ${cleanScripture || "Worship"}
+Emotional Mode: ${emotional_mode || "triumph_declaration"}
 
-    const cleaned = rawText.replace(/^```json\n?/, '').replace(/^```\n?/, '').replace(/\n?```$/, '').trim();
-    const parsed = JSON.parse(cleaned);
+Create a structure including Intro, Verse 1, Chorus, Verse 2, Chorus, Bridge, Tag, Outro. The progressions must feel like authentic gospel chords. Intro has 4 bars, mute percussion.`;
 
-    const flatLyrics = [];
-    if (parsed.sections && Array.isArray(parsed.sections)) {
-      parsed.sections.forEach(section => {
-        const lyricsList = section.lyrics || [""];
-        const chordsList = section.chords || ["G"];
-        const chordsPerLine = Math.max(1, Math.ceil(chordsList.length / lyricsList.length));
-        
-        lyricsList.forEach((line, li) => {
-          const start = li * chordsPerLine;
-          const end = Math.min(start + chordsPerLine, chordsList.length);
-          const lineChords = chordsList.slice(start, end);
-          flatLyrics.push({
-            part: section.part || "Section",
-            line: line,
-            chords: lineChords.length > 0 ? lineChords : [chordsList[chordsList.length - 1] || "G"],
-            arrangement: section.arrangement || { dynamics: "mezzo", percussion: "full" }
-          });
-        });
-      });
+    console.log("[generate] Executing Call 1 (Structure & Chords)...");
+    const responseCall1 = await callGroq([systemCall1, { role: "user", content: userCall1 }], 0.3);
+    const structure = cleanJsonResponse(responseCall1.choices[0].message.content);
+
+    // If instrumental mode is requested, we skip Call 2 entirely!
+    if (instrumentation === "instrumental") {
+      console.log("[generate] Instrumental mode requested: skipping Call 2.");
+      const sections = structure.sections.map((sec) => ({
+        ...sec,
+        lyrics: sec.part === "Intro" ? ["(Instrumental Intro)"] : ["(Instrumental)"],
+        production_notes: `${sec.part} - Instrumental backing`,
+      }));
+      const parsed = {
+        title: structure.title || `${cleanTheme || "Grace"} (Instrumental)`,
+        scripture: structure.scripture || cleanScripture || "Psalm 150:6",
+        sections,
+      };
+      const output = formatParsedSong(parsed, genre, emotional_mode, instrumentation, vocal_gender);
+      return res.status(200).json(output);
     }
 
-    const flatChords = flatLyrics.flatMap(l => l.chords);
+    // --- Call 2: Lyrics (Creative temperature) ---
+    const systemCall2 = {
+      role: "system",
+      content: `You are an expert African Gospel Lyricist.
+You write beautiful, moving lyrics that flow naturally with the musical structure.
+You must return ONLY a valid JSON object matching this schema:
+{
+  "title": "Title here",
+  "scripture": "Scripture here",
+  "sections": [
+    {
+      "part": "Section Name",
+      "lyrics": ["Line 1", "Line 2", ...], // Each line corresponds to 1 or 2 bars. Call-and-response must start with "(Leader)" or "(Choir)"
+      "chords": ["Chord1", "Chord2", ...], // Keep these identical to input
+      "arrangement": { "dynamics": "piano" | "mezzo" | "forte", "percussion": "mute" | "light" | "full" | "heavy" | "solo" }, // Keep identical
+      "production_notes": "notes explaining arrangement dynamics and feeling"
+    }
+  ]
+}`,
+    };
 
-    console.log("🎶 Successfully generated structured gospel song:", parsed.title);
-    return res.status(200).json({
-      title: parsed.title,
-      scripture: parsed.scripture,
-      lyrics: flatLyrics,
-      chords: flatChords,
-      genre: genre,
-      emotional_mode: emotional_mode || null,
-      instrumentation: instrumentation || null,
-      vocal_gender: vocal_gender || null,
-    });
+    const userCall2 = `Structure:
+${JSON.stringify(structure, null, 2)}
 
-  } catch (error) {
-    console.error("❌ Error generating song:", error.message);
-    return res.status(200).json(mockSong());
+Parameters:
+- Languages: ${langs ? langs.join(", ") : "English"}
+- Vocal Lead: ${vocal_gender || "mixed"}
+- Emotional Mode: ${emotional_mode || "triumph_declaration"}
+
+Write lyrics matching each section.
+Rules:
+1. Translate scripture "${structure.scripture || cleanScripture}" into first-person testimony prayer (e.g. "I will stand", "You are my shield"), NOT a direct scripture quote.
+2. Incorporate call-and-response tags: prefix lines with "(Leader)" or "(Choir)".
+3. Intro section lyrics must be exactly ["(Instrumental Intro)"].
+4. Add authentic African gospel expressions (e.g., "Oluwa", "Chineke", "Imela") where appropriate for flavor.`;
+
+    console.log("[generate] Executing Call 2 (Lyrics generation)...");
+    const Call2Temp = temperature ?? 0.75;
+    const responseCall2 = await callGroq([systemCall2, { role: "user", content: userCall2 }], Call2Temp);
+    const parsed = cleanJsonResponse(responseCall2.choices[0].message.content);
+
+    const output = formatParsedSong(parsed, genre, emotional_mode, instrumentation, vocal_gender);
+    return res.status(200).json(output);
+  } catch (err) {
+    console.error("[generate] Error in Two-Call Pipeline:", err?.message || err);
+    return res.status(200).json(buildMockSong());
   }
 }
 
-// Builds a gospel 1-4-5-6 chord progression for any root key
-function buildChords(root) {
-  const NOTES = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
-  const idx = NOTES.indexOf(root);
-  if (idx === -1) return [root, "F", "G", "Am"];
-  const I  = NOTES[idx];
-  const IV = NOTES[(idx + 5) % 12];
-  const V  = NOTES[(idx + 7) % 12];
-  const VI = NOTES[(idx + 9) % 12] + "m";
-  return [I, IV, V, VI];
+// Flat-maps the multi-section JSON output into the final structure expected by the frontend
+function formatParsedSong(parsed, genre, emotional_mode, instrumentation, vocal_gender) {
+  const flatLyrics = [];
+  if (parsed.sections && Array.isArray(parsed.sections)) {
+    parsed.sections.forEach((section) => {
+      const lyricsList = section.lyrics || [""];
+      const chordsList = section.chords || ["G"];
+      const chordsPerLine = Math.max(1, Math.ceil(chordsList.length / lyricsList.length));
+
+      lyricsList.forEach((line, li) => {
+        const start = li * chordsPerLine;
+        const end = Math.min(start + chordsPerLine, chordsList.length);
+        const lineChords = chordsList.slice(start, end);
+        flatLyrics.push({
+          part: section.part || "Section",
+          line: line,
+          chords: lineChords.length > 0 ? lineChords : [chordsList[chordsList.length - 1] || "G"],
+          arrangement: section.arrangement || { dynamics: "mezzo", percussion: "full" },
+        });
+      });
+    });
+  }
+
+  const flatChords = flatLyrics.flatMap((l) => l.chords);
+
+  return {
+    title: parsed.title || "Gospel Song",
+    scripture: parsed.scripture || "Psalm 150:6",
+    lyrics: flatLyrics,
+    chords: flatChords,
+    genre: genre || "Contemporary",
+    emotional_mode: emotional_mode || null,
+    instrumentation: instrumentation || null,
+    vocal_gender: vocal_gender || null,
+  };
 }

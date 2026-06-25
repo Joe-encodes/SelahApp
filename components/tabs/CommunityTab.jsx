@@ -72,14 +72,14 @@ export const CommunityTab = ({ onPlay }) => {
     return (
       <div className="space-y-8">
         <div>
-          <h2 className="text-2xl md:text-3xl font-bold text-white leading-tight">Community</h2>
-          <p className="text-sm text-gray-400 mt-1.5">Discover what the global gospel choir is creating.</p>
+          <h2 className="selah-title-lg">Community Feed</h2>
+          <p className="selah-body mt-1.5">Discover what the global gospel choir is creating.</p>
         </div>
         <div className="flex flex-col items-center justify-center py-20 text-center">
-          <span className="material-symbols-outlined text-5xl text-suno-accent mb-4">groups</span>
-          <h3 className="text-xl font-bold text-white mb-2">Connect to the Community</h3>
-          <p className="text-sm text-gray-400 max-w-md leading-relaxed">
-            Add your Supabase keys to <code className="text-suno-accent bg-suno-gray-800 px-1.5 py-0.5 rounded">.env.local</code> and run the schema SQL to unlock the community feed — see songs from the global Selah choir.
+          <span className="material-symbols-outlined text-5xl text-suno-accent mb-4 font-bold">groups</span>
+          <h3 className="selah-title-md mb-2">Connect to the Feed</h3>
+          <p className="selah-body max-w-md leading-relaxed">
+            Add your Supabase keys to <code className="text-suno-accent bg-suno-gray-800 px-1.5 py-0.5 rounded">.env.local</code> and run the schema SQL to unlock the Explore feed — see songs from the global Selah choir.
           </p>
         </div>
       </div>
@@ -89,21 +89,21 @@ export const CommunityTab = ({ onPlay }) => {
   return (
     <div className="space-y-8">
       <div>
-        <h2 className="text-2xl md:text-3xl font-bold text-white leading-tight">Community</h2>
-        <p className="text-sm text-gray-400 mt-1.5">Gospel arrangements shared by the Selah community.</p>
+        <h2 className="selah-title-lg">Community Feed</h2>
+        <p className="selah-body mt-1.5">Gospel arrangements shared by the Selah community.</p>
       </div>
 
       {!currentUser && (
         <div className="p-4 rounded-2xl bg-suno-accent/10 border border-suno-accent/20 text-suno-accent text-sm flex items-center gap-3">
           <span className="material-symbols-outlined text-lg shrink-0">info</span>
-          <span>Sign in to like songs and share your own arrangements with the community.</span>
+          <span className="selah-body-bold text-suno-accent">Sign in to like songs and share your own arrangements with the community.</span>
         </div>
       )}
 
       {loading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="bg-suno-gray-900 border border-suno-gray-800 rounded-xl overflow-hidden animate-pulse">
+            <div key={i} className="selah-card animate-pulse">
               <div className="aspect-square bg-suno-gray-800" />
               <div className="p-4 space-y-2">
                 <div className="h-4 bg-suno-gray-800 rounded w-3/4" />
@@ -115,7 +115,7 @@ export const CommunityTab = ({ onPlay }) => {
       ) : songs.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <span className="material-symbols-outlined text-5xl text-gray-700 mb-4">queue_music</span>
-          <p className="text-gray-500 text-sm">No public songs yet. Be the first to publish one from your Library!</p>
+          <p className="selah-body">No public songs yet. Be the first to publish one from your Library!</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -125,7 +125,7 @@ export const CommunityTab = ({ onPlay }) => {
               <div
                 key={song.id}
                 onClick={() => onPlay && onPlay(song)}
-                className="group bg-suno-gray-900 border border-suno-gray-800 rounded-xl overflow-hidden hover:border-suno-gray-700 transition-all duration-300 cursor-pointer flex flex-col"
+                className="selah-card-interactive group flex flex-col"
               >
                 <div className="relative aspect-square overflow-hidden bg-suno-gray-800">
                   <img
@@ -135,7 +135,7 @@ export const CommunityTab = ({ onPlay }) => {
                   />
                   <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                     <button
-                      className="w-12 h-12 bg-suno-accent rounded-full flex items-center justify-center text-white transform translate-y-4 group-hover:translate-y-0 transition-all duration-300 shadow-xl hover:scale-110 active:scale-95"
+                      className="w-12 h-12 bg-suno-accent rounded-full flex items-center justify-center text-white transform translate-y-4 group-hover:translate-y-0 transition-all duration-300 shadow-xl hover:scale-110 active:scale-95 cursor-pointer"
                       onClick={(e) => { e.stopPropagation(); onPlay && onPlay(song); }}
                     >
                       <span className="material-symbols-outlined text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>play_arrow</span>
@@ -145,7 +145,7 @@ export const CommunityTab = ({ onPlay }) => {
                     <button
                       id={`community-share-${song.id}`}
                       onClick={(e) => handleShare(e, song)}
-                      className="p-2 bg-black/60 backdrop-blur-md rounded-full text-white hover:text-suno-accent transition-colors"
+                      className="p-2 bg-black/60 backdrop-blur-md rounded-full text-white hover:text-suno-accent transition-colors cursor-pointer"
                       title="Share this song"
                     >
                       <span className="material-symbols-outlined text-sm">share</span>
@@ -153,7 +153,7 @@ export const CommunityTab = ({ onPlay }) => {
                     <button
                       id={`community-like-${song.id}`}
                       onClick={(e) => handleLike(e, song)}
-                      className={`p-2 bg-black/60 backdrop-blur-md rounded-full transition-colors ${isLiked ? "text-red-500" : "text-white hover:text-red-400"}`}
+                      className={`p-2 bg-black/60 backdrop-blur-md rounded-full transition-colors cursor-pointer ${isLiked ? "text-red-500" : "text-white hover:text-red-400"}`}
                       title={isLiked ? "Unlike" : "Like"}
                     >
                       <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: `'FILL' ${isLiked ? 1 : 0}` }}>favorite</span>
@@ -163,18 +163,11 @@ export const CommunityTab = ({ onPlay }) => {
 
                 <div className="p-4 flex-grow flex flex-col justify-between">
                   <div>
-                    <h3 className="font-bold text-base text-white truncate mb-1">{song.title}</h3>
-                    <p className="text-xs text-gray-400 truncate">{song.genre} · Key of {song.musicKey}</p>
+                    <h3 className="selah-body-bold truncate">{song.title}</h3>
+                    <p className="selah-meta mt-1 truncate">by {song.creator_name || "Selah Choir"}</p>
                   </div>
                   <div className="mt-3 flex items-center justify-between">
-                    <div className="flex gap-1 flex-wrap">
-                      {song.genre && (
-                        <span className="px-2 py-0.5 bg-suno-gray-800 rounded-full text-[10px] text-gray-400 font-bold uppercase tracking-wider">
-                          {song.genre}
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1 text-xs text-gray-500">
+                    <div className="flex items-center gap-1 text-xs text-gray-500 ml-auto font-bold">
                       <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>favorite</span>
                       <span>{likeCounts[song.id] ?? 0}</span>
                     </div>

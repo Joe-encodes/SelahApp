@@ -2,8 +2,9 @@
 
 
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Outfit", sans-serif;
+  --font-sans: "Plus Jakarta Sans", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Outfit", "Montserrat", sans-serif;
+  --font-serif: "Playfair Display", Georgia, serif;
 
   --color-suno-black: #0a0a0a;
   --color-suno-gray-950: #0d0d0d;
@@ -35,17 +36,17 @@
   --color-on-primary-fixed: #ffffff;
   --color-primary-fixed-dim: #3b82f6;
   
-  --font-body-lg: "Inter", sans-serif;
+  --font-body-lg: "Plus Jakarta Sans", sans-serif;
   --font-headline-md: "Outfit", sans-serif;
   --font-headline-lg-mobile: "Outfit", sans-serif;
   --font-headline-lg: "Outfit", sans-serif;
   --font-headline-xl: "Outfit", sans-serif;
-  --font-body-md: "Inter", sans-serif;
-  --font-label-sm: "Inter", sans-serif;
+  --font-body-md: "Plus Jakarta Sans", sans-serif;
+  --font-label-sm: "Plus Jakarta Sans", sans-serif;
 
-  --border-radius-DEFAULT: 0.75rem;
-  --border-radius-lg: 0.75rem;
-  --border-radius-xl: 1rem;
+  --border-radius-DEFAULT: 1rem;
+  --border-radius-lg: 1rem;
+  --border-radius-xl: 1.25rem;
   --border-radius-2xl: 1.5rem;
   --border-radius-3xl: 2rem;
   --border-radius-full: 9999px;
@@ -55,6 +56,64 @@
   body {
     @apply bg-suno-black text-white antialiased font-sans;
   }
+}
+
+/* Reusable Panels & Containers */
+.selah-panel {
+  @apply bg-suno-gray-900 border border-suno-gray-800/80 rounded-3xl p-6 md:p-8 shadow-xl relative;
+}
+
+/* Reusable Cards & Containers */
+.selah-card {
+  @apply bg-suno-gray-900 border border-suno-gray-800/80 rounded-2xl overflow-hidden transition-all duration-300 shadow-md;
+}
+.selah-card-interactive {
+  @apply bg-suno-gray-900 border border-suno-gray-800/80 rounded-2xl overflow-hidden transition-all duration-300 shadow-md cursor-pointer hover:border-suno-gray-700/80 hover:shadow-lg hover:shadow-suno-accent/5 active:scale-[0.99] hover:-translate-y-[1px];
+}
+
+/* Reusable Buttons */
+.selah-btn-primary {
+  @apply inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-suno-accent text-white text-xs font-bold rounded-full transition-all active:scale-95 shadow-md cursor-pointer hover:bg-blue-600 hover:shadow-lg hover:shadow-suno-accent/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none;
+}
+.selah-btn-secondary {
+  @apply inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-suno-gray-800 border border-suno-gray-700 text-gray-300 text-xs font-bold rounded-full transition-all active:scale-95 cursor-pointer hover:text-white hover:border-suno-gray-600 hover:bg-suno-gray-750 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none;
+}
+.selah-btn-accent-dim {
+  @apply inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-suno-accent/15 border border-suno-accent/30 text-suno-accent text-xs font-bold rounded-full transition-all active:scale-95 cursor-pointer hover:bg-suno-accent/20;
+}
+.selah-btn-danger {
+  @apply inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-bold rounded-full transition-all active:scale-95 cursor-pointer hover:bg-red-500/20 hover:text-white;
+}
+.selah-btn-pill {
+  @apply inline-flex items-center justify-center px-4 py-2 border rounded-full text-xs font-bold transition-all active:scale-95 cursor-pointer;
+}
+
+/* Reusable Form Inputs */
+.selah-input {
+  @apply w-full bg-suno-gray-950 border border-suno-gray-800 focus:border-suno-accent focus:ring-1 focus:ring-suno-accent/30 rounded-xl px-4 py-2.5 text-xs md:text-sm text-white placeholder:text-gray-500 outline-none transition-all font-semibold shadow-inner;
+}
+.selah-textarea {
+  @apply w-full bg-suno-gray-950 border border-suno-gray-800 focus:border-suno-accent focus:ring-1 focus:ring-suno-accent/30 rounded-xl px-4 py-2.5 text-xs md:text-sm text-white placeholder:text-gray-500 outline-none transition-all resize-none font-semibold shadow-inner;
+}
+
+/* Unified Typography scales */
+.selah-title-lg {
+  @apply font-display text-2xl md:text-3xl text-white font-extrabold leading-tight tracking-tight;
+}
+.selah-title-md {
+  @apply font-display text-lg md:text-xl text-white font-bold tracking-tight;
+}
+.selah-title-sm {
+  @apply font-display text-sm md:text-base font-semibold text-white tracking-tight;
+}
+.selah-body {
+  @apply font-sans text-xs md:text-sm text-gray-400 font-normal leading-relaxed;
+}
+.selah-body-bold {
+  @apply font-sans text-xs md:text-sm text-white font-semibold leading-relaxed;
+}
+.selah-meta {
+  @apply font-sans text-[11px] md:text-xs text-gray-500 font-normal;
 }
 
 .material-symbols-outlined {

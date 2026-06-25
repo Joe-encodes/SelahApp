@@ -1,4 +1,25 @@
-export const LibraryTab = ({ songs, songsLoaded, onPlay, onQuickPlay, activeSongId }) => {
+import { useState } from "react";
+
+const COVER_FALLBACKS = [
+  "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?q=80&w=600",
+  "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?q=80&w=600",
+  "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?q=80&w=600",
+  "https://images.unsplash.com/photo-1459749411175-04bf5292ceea?q=80&w=600",
+  "https://images.unsplash.com/photo-1507838153414-b4b713384a76?q=80&w=600",
+];
+
+const getSongCover = (song) => {
+  return COVER_FALLBACKS[String(song.title).charCodeAt(0) % COVER_FALLBACKS.length];
+};
+
+export const LibraryTab = ({ songs, songsLoaded, onPlay, onQuickPlay, activeSongId, user, profile }) => {
+  const [likedSongs, setLikedSongs] = useState({});
+
+  const toggleLike = (e, id) => {
+    e.stopPropagation();
+    setLikedSongs((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
   const handleShare = async (e, song) => {
     e.stopPropagation();
     const url = `${window.location.origin}/song/${song.id}`;
@@ -10,114 +31,100 @@ export const LibraryTab = ({ songs, songsLoaded, onPlay, onQuickPlay, activeSong
     }
   };
 
+  // Only show songs the user owns or that are public, and are not expired (>48h old)
+  const visibleSongs = songs.filter((s) => {
+    if (s.created_at && (Date.now() - s.created_at) > 48 * 60 * 60 * 1000) return false;
+    if (s.is_public) return true;
+    if (user && String(s.user_id) === String(user.id)) return true;
+    return false;
+  });
+
   return (
     <div className="space-y-8">
       <div>
-        <h2 className="text-2xl md:text-3xl text-white font-bold leading-tight">Your Library</h2>
-        <p className="text-sm text-gray-400 mt-1.5">Browse and practice your saved gospel arrangements.</p>
+        <h2 className="selah-title-lg">Your Library</h2>
+        <p className="selah-body mt-1.5">Browse and practice your saved gospel arrangements.</p>
       </div>
 
-      <div className="bg-suno-gray-900 border border-suno-gray-800 p-6 rounded-3xl space-y-4">
-        <div className="flex justify-between items-center border-b border-suno-gray-800 pb-3">
-          <span className="text-[10px] font-bold text-suno-accent uppercase tracking-widest">
-            {songs.length} Track{songs.length !== 1 ? "s" : ""} Arranged
-          </span>
-          <span className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">Scripture Verified</span>
-        </div>
-
-        {!songsLoaded ? (
-          <div className="divide-y divide-suno-gray-800">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-4 py-4 animate-pulse">
-                <div className="w-10 h-10 rounded-xl bg-suno-gray-800 shrink-0" />
-                <div className="flex-1 space-y-2">
-                  <div className="h-3 bg-suno-gray-800 rounded w-2/3" />
-                  <div className="h-2.5 bg-suno-gray-800 rounded w-1/3" />
-                </div>
+      {!songsLoaded ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="selah-card animate-pulse">
+              <div className="aspect-square bg-suno-gray-800" />
+              <div className="p-4 space-y-2">
+                <div className="h-4 bg-suno-gray-800 rounded w-3/4" />
               </div>
-            ))}
-          </div>
-        ) : songs.length === 0 ? (
-          <div className="py-16 flex flex-col items-center justify-center text-center">
-            <span className="material-symbols-outlined text-5xl text-gray-700 mb-4">library_music</span>
-            <p className="text-gray-500 text-sm font-medium">No songs yet.</p>
-            <p className="text-gray-600 text-xs mt-1">Generate your first song in Create Studio.</p>
-          </div>
-        ) : (
-          <div className="divide-y divide-suno-gray-800">
-            {songs.map((song, idx) => {
-              const isActive = activeSongId === song.id;
-              return (
-                <div
-                  key={song.id || idx}
-                  className={`flex items-center justify-between py-4 cursor-pointer group px-2 rounded-xl transition-all duration-200 ${
-                    isActive ? "bg-suno-accent/5 border border-suno-accent/20" : "hover:bg-suno-gray-800/40"
-                  }`}
-                >
-                  {/* Track number / play toggle */}
-                  <div className="flex items-center gap-4 min-w-0 flex-1" onClick={() => onPlay(song)}>
-                    <div
-                      className={`w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 transition-all duration-300 ${
-                        isActive
-                          ? "bg-suno-accent/20 border-suno-accent/50"
-                          : "bg-suno-gray-800 border-suno-gray-700 group-hover:bg-suno-accent/20 group-hover:border-suno-accent/50"
-                      }`}
-                    >
-                      <span className="group-hover:hidden font-mono text-xs text-gray-400">
-                        {String(idx + 1).padStart(2, "0")}
-                      </span>
-                      <span
-                        className="hidden group-hover:block material-symbols-outlined text-suno-accent text-base"
-                        style={{ fontVariationSettings: "'FILL' 1" }}
-                      >
-                        {isActive ? "pause" : "play_arrow"}
-                      </span>
-                    </div>
-                    <div className="min-w-0">
-                      <h4 className={`text-sm font-bold truncate transition-colors ${isActive ? "text-suno-accent" : "text-white group-hover:text-suno-accent"}`}>
-                        {song.title}
-                      </h4>
-                      <p className="text-xs text-gray-400 truncate mt-0.5">
-                        {song.lang} &middot; <span className="font-mono text-gray-500">📖 {song.scripture}</span>
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0 ml-4">
-                    {/* Quick play button */}
+            </div>
+          ))}
+        </div>
+      ) : visibleSongs.length === 0 ? (
+        <div className="py-16 flex flex-col items-center justify-center text-center">
+          <span className="material-symbols-outlined text-5xl text-gray-700 mb-4 font-bold">library_music</span>
+          <p className="selah-body-bold text-base">No songs yet.</p>
+          <p className="selah-body mt-1">Generate your first song in Create Studio.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {visibleSongs.map((song) => {
+            const isLiked = !!likedSongs[song.id];
+            const isActive = activeSongId === song.id;
+            return (
+              <div
+                key={song.id}
+                onClick={() => onPlay(song)}
+                className={`group flex flex-col ${
+                  isActive ? "selah-card-interactive border-suno-accent/50 shadow-[0_0_16px_rgba(35,212,94,0.15)] border-suno-accent/70 animate-pulse" : "selah-card-interactive"
+                }`}
+              >
+                <div className="relative aspect-square overflow-hidden bg-suno-gray-800">
+                  <img
+                    src={getSongCover(song)}
+                    alt={song.title}
+                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                  />
+                  {/* Play button overlay — quick play plays in bottom bar */}
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                     <button
-                      id={`lib-play-${song.id}`}
+                      id={`lib-quick-play-${song.id}`}
+                      className="w-12 h-12 bg-suno-accent rounded-full flex items-center justify-center text-white transform translate-y-4 group-hover:translate-y-0 transition-all duration-300 shadow-xl hover:scale-110 active:scale-95 cursor-pointer"
                       onClick={(e) => { e.stopPropagation(); onQuickPlay(song); }}
-                      className="p-2 text-gray-500 hover:text-suno-accent transition-colors opacity-0 group-hover:opacity-100"
                       title="Play"
                     >
-                      <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>play_circle</span>
+                      <span className="material-symbols-outlined text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>
+                        {isActive ? "pause" : "play_arrow"}
+                      </span>
                     </button>
-                    {/* Share button */}
+                  </div>
+                  {/* Heart + Share overlay */}
+                  <div className="absolute top-2.5 right-2.5 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
-                      id={`lib-share-${song.id}`}
+                      id={`lib-share-btn-${song.id}`}
+                      className="p-2 bg-black/60 backdrop-blur-md rounded-full text-white hover:text-suno-accent transition-colors cursor-pointer"
                       onClick={(e) => handleShare(e, song)}
-                      className="p-2 text-gray-500 hover:text-suno-accent transition-colors opacity-0 group-hover:opacity-100"
                       title="Share"
                     >
-                      <span className="material-symbols-outlined text-base">share</span>
+                      <span className="material-symbols-outlined text-sm">share</span>
                     </button>
-                    <span className="px-2.5 py-0.5 rounded-full bg-suno-gray-800 border border-suno-gray-700 text-[10px] font-bold text-gray-400 uppercase tracking-wider hidden sm:inline">
-                      {song.genre}
-                    </span>
-                    {song.musicKey && (
-                      <span className="px-2.5 py-0.5 rounded-full bg-suno-gray-800 border border-suno-gray-700 text-[10px] font-mono font-bold text-suno-accent uppercase hidden md:inline">
-                        Key {song.musicKey}
-                      </span>
-                    )}
-                    <span className="material-symbols-outlined text-gray-500 group-hover:text-suno-accent group-hover:translate-x-0.5 transition-all text-base">chevron_right</span>
+                    <button
+                      id={`lib-like-btn-${song.id}`}
+                      className={`p-2 bg-black/60 backdrop-blur-md rounded-full transition-colors cursor-pointer ${isLiked ? "text-red-500" : "text-white hover:text-red-400"}`}
+                      onClick={(e) => toggleLike(e, song.id)}
+                      title={isLiked ? "Unlike" : "Like"}
+                    >
+                      <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: `'FILL' ${isLiked ? 1 : 0}` }}>favorite</span>
+                    </button>
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+
+                <div className="p-4">
+                  <h3 className="selah-body-bold truncate">{song.title}</h3>
+                  <p className="selah-meta mt-1 truncate">by {song.creator_name || "Selah Choir"}</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };

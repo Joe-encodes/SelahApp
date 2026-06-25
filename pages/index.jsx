@@ -6,68 +6,81 @@ import { GeneratingModal } from "../components/GeneratingModal";
 import { AuthRequiredModal } from "../components/AuthRequiredModal";
 import { HomeTab } from "../components/tabs/HomeTab";
 import { CreateTab } from "../components/tabs/CreateTab";
+import { RehearseTab } from "../components/tabs/RehearseTab";
 import { LibraryTab } from "../components/tabs/LibraryTab";
-import { CommunityTab } from "../components/tabs/CommunityTab";
-import { useGospelAudio } from "../lib/useGospelAudio";
+import { useAudioContext } from "../lib/audioContext";
 import { supabase } from "../lib/supabase";
-import { getAllSongs, saveSong, getUser, signOut } from "../lib/songService";
+import { getAllSongs, saveSong, getUser, signOut, getProfile } from "../lib/songService";
+import { ProfileModal } from "../components/ProfileModal";
+
+const VALID_TABS = ["home", "create", "rehearse", "library"];
 
 export default function SelahApp() {
   const router = useRouter();
-  const [tab, setTab] = useState("home");
+  const activeTab = VALID_TABS.includes(router.query.tab) ? router.query.tab : "home";
+
   const [songs, setSongs] = useState(MOCK_SONGS);
   const [songsLoaded, setSongsLoaded] = useState(false);
-  const [activeSong, setActiveSong] = useState(null);
+  const { activeSong, setActiveSong, audioState } = useAudioContext();
   const [generating, setGenerating] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
   const [user, setUser] = useState(null);
   const [userInitials, setUserInitials] = useState("?");
+  const [userInitialized, setUserInitialized] = useState(false);
+  const [profile, setProfile] = useState(null);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedGenre, setSelectedGenre] = useState(null);
 
-  const chords = activeSong?.chords?.length > 0 ? activeSong.chords : ["C", "F", "G", "Am"];
-  const genre = activeSong?.genre || "Contemporary";
-  const audioState = useGospelAudio(chords, genre);
   const { isPlaying, currentChordIdx, bpm, setBpm, play, pause, stop } = audioState;
 
-  // ─── Auth + Songs Load ─────────────────────────────────────────────────────
+  // Navigate to a tab via URL — back button works correctly
+  const goToTab = useCallback((tabId) => {
+    router.push(`/?tab=${tabId}`, undefined, { shallow: true });
+  }, [router]);
+
+  // ─── Auth initialization ────────────────────────────────────────────────────
   useEffect(() => {
-    // Check auth state
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        const name = session.user.user_metadata?.full_name || session.user.email || "?";
-        setUserInitials(
-          name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
-        );
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      if (currentUser) {
+        const name = currentUser.user_metadata?.full_name || currentUser.email || "?";
+        setUserInitials(name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2));
       }
+      setUserInitialized(true);
     });
 
-    supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
+      setUserInitialized(true);
     });
 
-    // Network status
+    const checkOnlineStatus = async () => {
+      if (!navigator.onLine) {
+        setIsOffline(true);
+        return;
+      }
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        await fetch("/logo.png", { method: "HEAD", signal: controller.signal });
+        clearTimeout(timeoutId);
+        setIsOffline(false);
+      } catch {
+        setIsOffline(true);
+      }
+    };
+
     setIsOffline(!navigator.onLine);
-    const handleOnline = () => setIsOffline(false);
+    checkOnlineStatus();
+
+    const handleOnline = () => checkOnlineStatus();
     const handleOffline = () => setIsOffline(true);
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
-
-    // Load songs (Supabase → IndexedDB fallback)
-    getAllSongs().then((dbSongs) => {
-      if (dbSongs && dbSongs.length > 0) {
-        setSongs((prev) => {
-          const existingIds = new Set(prev.map((s) => s.id));
-          const unique = dbSongs.filter((s) => !existingIds.has(s.id));
-          return [...unique, ...prev];
-        });
-      }
-      setSongsLoaded(true);
-    }).catch(() => setSongsLoaded(true));
-
-    // Restore tab from router query
-    if (router.query.tab) setTab(router.query.tab);
 
     if (typeof window !== "undefined" && "serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js").catch(() => {});
@@ -76,21 +89,50 @@ export default function SelahApp() {
     return () => {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
+      subscription.unsubscribe();
     };
-  }, [router.query.tab]);
+  }, []);
 
-  // Sync active song's backing track into the audio engine
+  // Sync profile when user loaded
   useEffect(() => {
-    if (activeSong?.audio_url) {
-      audioState.loadBackingTrack(activeSong.audio_url);
-    } else if (audioState.clearBackingTrack) {
-      audioState.clearBackingTrack();
+    if (user) {
+      getProfile(user.id).then((p) => { if (p) setProfile(p); }).catch(console.error);
+    } else {
+      setProfile(null);
     }
-  }, [activeSong]);
+  }, [user]);
+
+  // Compute initials dynamically
+  useEffect(() => {
+    if (user) {
+      const name = profile?.display_name || user.user_metadata?.full_name || user.email || "?";
+      setUserInitials(name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2));
+    }
+  }, [user, profile]);
+
+  // Songs loading
+  useEffect(() => {
+    if (!userInitialized) return;
+    setSongsLoaded(false);
+    getAllSongs().then((dbSongs) => {
+      if (dbSongs && dbSongs.length > 0) {
+        setSongs((prev) => {
+          const existingIds = new Set(prev.map((s) => s.id));
+          const unique = dbSongs.filter((s) => !existingIds.has(s.id));
+          return [...unique, ...prev];
+        });
+      } else if (dbSongs && dbSongs.length === 0) {
+        setSongs([]);
+      }
+      setSongsLoaded(true);
+    }).catch(() => setSongsLoaded(true));
+  }, [user, userInitialized]);
+
+
 
   // ─── Handlers ──────────────────────────────────────────────────────────────
 
-  const handleGenerate = async ({ theme, musicKey, langs, genre: selectedGenre, harmony, scripture, rawSongText, emotional_mode, instrumentation, vocal_gender }) => {
+  const handleGenerate = async (params) => {
     if (isOffline) {
       alert("You are offline. Song generation requires an active internet connection.");
       return;
@@ -101,6 +143,43 @@ export default function SelahApp() {
     }
     setGenerating(true);
     try {
+      const creatorName = profile?.display_name || user?.user_metadata?.full_name || user?.email?.split("@")[0] || null;
+
+      if (params.isPreset) {
+        // Prevent duplicate: if a song with this exact title already exists, navigate to it
+        const existingPreset = songs.find(
+          (s) => s.title === params.title && s.chords?.join(",") === (params.chords || []).join(",")
+        );
+        if (existingPreset) {
+          stop();
+          setActiveSong(existingPreset);
+          router.push(`/song/${existingPreset.id}?from=${activeTab}`);
+          setGenerating(false);
+          return;
+        }
+        const newSong = {
+          id: Date.now(),
+          title: params.title,
+          genre: params.genre || "Contemporary",
+          musicKey: params.musicKey || "G",
+          lang: "English",
+          theme: params.theme || "",
+          scripture: params.scripture || "",
+          lyrics: params.lyrics || [],
+          chords: params.chords || [],
+          creator_name: creatorName,
+          is_public: false,
+          created_at: Date.now(),
+        };
+        const savedSong = await saveSong(newSong).catch(() => newSong);
+        setSongs((prev) => [savedSong, ...prev]);
+        stop();
+        setActiveSong(savedSong);
+        router.push(`/song/${savedSong.id}?from=${activeTab}`);
+        return;
+      }
+
+      const { theme, musicKey, langs, genre: selectedGenre, harmony, scripture, rawSongText, emotional_mode, instrumentation, vocal_gender } = params;
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -112,7 +191,7 @@ export default function SelahApp() {
         title: data.title || `New ${theme} Song`,
         genre: selectedGenre,
         musicKey,
-        lang: langs.join(" + "),
+        lang: langs ? langs.join(" + ") : "English",
         theme,
         scripture: data.scripture || scripture || `Auto-matched for "${theme}"`,
         lyrics: data.lyrics || [],
@@ -120,6 +199,7 @@ export default function SelahApp() {
         emotional_mode: data.emotional_mode || emotional_mode || null,
         instrumentation: data.instrumentation || instrumentation || null,
         vocal_gender: data.vocal_gender || vocal_gender || null,
+        creator_name: creatorName,
         is_public: true,
         created_at: Date.now(),
       };
@@ -127,7 +207,7 @@ export default function SelahApp() {
       setSongs((prev) => [savedSong, ...prev]);
       stop();
       setActiveSong(savedSong);
-      router.push(`/song/${savedSong.id}`);
+      router.push(`/song/${savedSong.id}?from=${activeTab}`);
     } catch (err) {
       console.error(err);
       alert("Error generating song. Please try again.");
@@ -142,14 +222,12 @@ export default function SelahApp() {
     await saveSong(updatedSong).catch(console.error);
   }, [activeSong]);
 
-  /** Navigate to Choir Desk (song editing/rehearsal mode) */
   const handleSongSelect = (song) => {
     stop();
     setActiveSong(song);
-    router.push(`/song/${song.id}`);
+    router.push(`/song/${song.id}?from=${activeTab}`);
   };
 
-  /** Spotify-style quick play — play audio but stay on the current page */
   const handleQuickPlay = (song) => {
     if (activeSong?.id === song.id) {
       isPlaying ? pause() : play();
@@ -157,18 +235,25 @@ export default function SelahApp() {
     }
     stop();
     setActiveSong(song);
-    // Give audio engine a tick to update chords/genre, then play
     setTimeout(() => play(), 50);
   };
 
   const handleSignOut = async () => {
     stop();
+    setActiveSong(null);
     await signOut();
     router.push("/auth");
   };
 
-  // ─── Shared Sidebar ────────────────────────────────────────────────────────
-  const SidebarNav = ({ navigateFn = setTab }) => (
+  // ─── Sidebar ───────────────────────────────────────────────────────────────
+  const NAV_ITEMS = [
+    { id: "home", label: "Discover", icon: "explore" },
+    { id: "create", label: "Create Studio", icon: "add_circle" },
+    { id: "rehearse", label: "Rehearsal Room", icon: "school" },
+    { id: "library", label: "Library", icon: "library_music" },
+  ];
+
+  const SidebarNav = () => (
     <aside className="fixed left-0 top-0 h-full w-64 bg-suno-gray-900 border-r border-suno-gray-800 flex flex-col p-6 z-50 hidden md:flex">
       {/* Logo */}
       <div className="flex flex-col items-center mb-8 border-b border-suno-gray-800 pb-6">
@@ -177,27 +262,21 @@ export default function SelahApp() {
         </div>
         <div className="text-center mt-2">
           <h1 className="font-serif text-2xl text-white tracking-[0.25em] uppercase font-medium">Selah</h1>
-          <p className="text-[9px] uppercase tracking-[0.2em] text-gray-400 font-semibold mt-1">Gospel Music App</p>
+          <p className="text-xs uppercase tracking-[0.2em] text-gray-300 font-bold mt-1">Gospel Music App</p>
         </div>
       </div>
 
-      {/* Nav links */}
       <nav className="flex-1 space-y-1">
-        {[
-          { id: "home", label: "Discover", icon: "explore" },
-          { id: "create", label: "Create Studio", icon: "add_circle" },
-          { id: "library", label: "Library", icon: "library_music" },
-          { id: "community", label: "Community", icon: "groups" },
-        ].map(({ id, label, icon }) => (
+        {NAV_ITEMS.map(({ id, label, icon }) => (
           <button
             key={id}
             id={`nav-${id}`}
-            onClick={() => navigateFn(id)}
+            onClick={() => goToTab(id)}
             className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-300 font-medium ${
-              tab === id ? "bg-suno-gray-800 text-white" : "text-gray-400 hover:text-white hover:bg-suno-gray-800/50"
+              activeTab === id ? "bg-suno-gray-800 text-white" : "text-gray-400 hover:text-white hover:bg-suno-gray-800/50"
             }`}
           >
-            <span className={`material-symbols-outlined text-xl ${tab === id ? "text-suno-accent" : ""}`}>{icon}</span>
+            <span className={`material-symbols-outlined text-xl ${activeTab === id ? "text-suno-accent" : ""}`}>{icon}</span>
             <span className="text-sm">{label}</span>
           </button>
         ))}
@@ -206,23 +285,26 @@ export default function SelahApp() {
       {/* User profile area */}
       <div className="border-t border-suno-gray-800 pt-4 mt-4">
         {user ? (
-          <div className="flex items-center gap-3">
+          <div
+            onClick={() => setShowProfileModal(true)}
+            className="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-suno-gray-800/50 transition-all text-left cursor-pointer group"
+          >
             <div className="w-9 h-9 rounded-full bg-suno-accent/20 border border-suno-accent/30 flex items-center justify-center shrink-0">
-              {user.user_metadata?.avatar_url ? (
-                <img src={user.user_metadata.avatar_url} alt="Avatar" className="w-full h-full rounded-full object-cover" />
+              {profile?.avatar_url || user.user_metadata?.avatar_url ? (
+                <img src={profile?.avatar_url || user.user_metadata.avatar_url} alt="Avatar" className="w-full h-full rounded-full object-cover" />
               ) : (
-                <span className="text-xs font-bold text-suno-accent">{userInitials}</span>
+                <span className="text-sm font-extrabold text-suno-accent">{userInitials}</span>
               )}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-bold text-white truncate">
-                {user.user_metadata?.full_name || user.email?.split("@")[0] || "User"}
+              <p className="text-sm font-extrabold text-white truncate group-hover:text-suno-accent transition-colors">
+                {profile?.display_name || user.user_metadata?.full_name || user.email?.split("@")[0] || "User"}
               </p>
-              <p className="text-[10px] text-gray-500 truncate">{user.email}</p>
+              <p className="text-xs text-gray-350 truncate font-bold">Settings</p>
             </div>
             <button
               id="sign-out-btn"
-              onClick={handleSignOut}
+              onClick={(e) => { e.stopPropagation(); handleSignOut(); }}
               className="p-1.5 text-gray-500 hover:text-white transition-colors"
               title="Sign out"
             >
@@ -243,6 +325,18 @@ export default function SelahApp() {
     </aside>
   );
 
+  const filteredSongs = songs.filter((s) => {
+    const q = searchQuery.toLowerCase();
+    const matchesSearch = (
+      (s.title || "").toLowerCase().includes(q) ||
+      (s.theme || "").toLowerCase().includes(q) ||
+      (s.scripture || "").toLowerCase().includes(q) ||
+      (s.genre || "").toLowerCase().includes(q)
+    );
+    const matchesGenre = selectedGenre ? (s.genre || "").toLowerCase() === selectedGenre.toLowerCase() : true;
+    return matchesSearch && matchesGenre;
+  });
+
   return (
     <div className="bg-suno-black text-white selection:bg-suno-accent/30 min-h-screen overflow-x-hidden font-sans">
       <Head>
@@ -253,7 +347,7 @@ export default function SelahApp() {
       <GeneratingModal visible={generating} />
       <AuthRequiredModal visible={showAuthModal} onClose={() => setShowAuthModal(false)} />
 
-      <SidebarNav navigateFn={setTab} />
+      <SidebarNav />
 
       <main className={`md:ml-64 ${activeSong ? "pb-44" : "pb-24"} min-h-screen transition-all duration-300`}>
         {/* Mobile header */}
@@ -278,20 +372,21 @@ export default function SelahApp() {
           </div>
         </header>
 
-        {/* Desktop top bar */}
+        {/* Desktop top bar — search (home only) + offline badge (all tabs) */}
         <header className="h-20 border-b border-suno-gray-800 flex items-center justify-between px-8 bg-suno-black/80 backdrop-blur-md sticky top-0 z-40 hidden md:flex">
-          <div className="flex items-center gap-6">
-            <div className="relative w-96">
-              <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">search</span>
-              <input
-                className="w-full bg-suno-gray-900 border border-suno-gray-800 rounded-full pl-12 pr-6 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-suno-accent focus:border-suno-accent text-white placeholder:text-gray-500 transition-all"
-                placeholder="Search songs, themes, scriptures..."
-                type="text"
-                disabled
-              />
-            </div>
-          </div>
-          <div className="flex items-center gap-4 text-gray-400">
+          <div className="flex items-center gap-4">
+            {activeTab === "home" && (
+              <div className="relative w-96">
+                <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-gray-550">search</span>
+                <input
+                  className="selah-input pl-12 pr-6 py-2 text-sm"
+                  placeholder="Search songs, themes, scriptures..."
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+            )}
             {isOffline && (
               <span className="text-[10px] font-bold text-amber-400 bg-amber-400/10 border border-amber-400/20 px-3 py-1 rounded-full">Offline Mode</span>
             )}
@@ -300,40 +395,82 @@ export default function SelahApp() {
 
         {/* Tab content */}
         <div className="px-4 md:px-8 pt-6">
-          {tab === "home" && (
+          {activeTab === "home" && (
             <HomeTab
-              songs={songs}
+              songs={filteredSongs}
               songsLoaded={songsLoaded}
               onPlay={handleSongSelect}
               onQuickPlay={handleQuickPlay}
-              onCreateFirst={() => setTab("create")}
+              onCreateFirst={() => goToTab("create")}
               activeSongId={activeSong?.id}
+              profile={profile}
+              user={user}
+              selectedGenre={selectedGenre}
+              onSelectGenre={(g) => setSelectedGenre(prev => prev === g ? null : g)}
+              isFiltered={!!searchQuery || !!selectedGenre}
             />
           )}
-          {tab === "create" && <CreateTab onGenerate={handleGenerate} />}
-          {tab === "library" && (
+          {activeTab === "create" && <CreateTab onGenerate={handleGenerate} />}
+          {activeTab === "rehearse" && <RehearseTab songs={songs} onPlay={handleSongSelect} onSelectClassic={handleGenerate} />}
+          {activeTab === "library" && (
             <LibraryTab
               songs={songs}
               songsLoaded={songsLoaded}
               onPlay={handleSongSelect}
               onQuickPlay={handleQuickPlay}
               activeSongId={activeSong?.id}
+              user={user}
+              profile={profile}
             />
           )}
-          {tab === "community" && <CommunityTab onPlay={handleSongSelect} />}
         </div>
+
+        {/* Footer */}
+        <footer className="mt-20 border-t border-suno-gray-800 px-8 py-10 md:ml-0">
+          <div className="max-w-6xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8">
+            <div className="col-span-2 md:col-span-1">
+              <h2 className="font-serif text-xl text-white tracking-[0.2em] uppercase font-medium mb-2">Selah</h2>
+              <p className="text-xs text-gray-500 leading-relaxed">AI-powered gospel music co-writer for choirs, worship leaders, and composers.</p>
+            </div>
+            <div>
+              <h3 className="text-xs font-extrabold text-gray-300 uppercase tracking-widest mb-3">App</h3>
+              <ul className="space-y-2">
+                {NAV_ITEMS.map(({ id, label }) => (
+                  <li key={id}>
+                    <button onClick={() => goToTab(id)} className="text-xs text-gray-500 hover:text-white transition-colors">{label}</button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h3 className="text-xs font-extrabold text-gray-300 uppercase tracking-widest mb-3">Community</h3>
+              <ul className="space-y-2 text-xs text-gray-500">
+                <li><a href="#" className="hover:text-white transition-colors">Instagram</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">YouTube</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Twitter / X</a></li>
+              </ul>
+            </div>
+            <div>
+              <h3 className="text-xs font-extrabold text-gray-300 uppercase tracking-widest mb-3">Legal</h3>
+              <ul className="space-y-2 text-xs text-gray-500">
+                <li><a href="#" className="hover:text-white transition-colors">Privacy Policy</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Terms of Service</a></li>
+              </ul>
+            </div>
+          </div>
+          <p className="mt-8 text-center text-xs text-gray-700">© {new Date().getFullYear()} Selah. All rights reserved.</p>
+        </footer>
       </main>
 
       {/* Persistent bottom player bar */}
       {activeSong && (
         <footer
-          className="fixed bottom-0 left-0 w-full bg-suno-gray-900 border-t border-suno-gray-800 z-[60] flex items-center px-4 md:px-8 shadow-[0_-8px_30px_rgb(0,0,0,0.5)] justify-between"
+          className="fixed bottom-0 left-0 w-full md:left-64 md:w-[calc(100%-16rem)] bg-suno-gray-900 border-t border-suno-gray-800 z-[60] flex items-center px-4 md:px-8 shadow-[0_-8px_30px_rgb(0,0,0,0.5)] justify-between"
           style={{ height: "5rem", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
         >
-          {/* Song info — click to open Choir Desk */}
           <div
             className="flex items-center gap-3 w-1/3 md:w-1/4 min-w-0 cursor-pointer group"
-            onClick={() => router.push(`/song/${activeSong.id}`)}
+            onClick={() => router.push(`/song/${activeSong.id}?from=${activeTab}`)}
           >
             <div className="w-12 h-12 md:w-14 md:h-14 rounded-lg bg-suno-gray-800 overflow-hidden flex-shrink-0 shadow-lg border border-suno-gray-700 relative">
               <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
@@ -343,91 +480,50 @@ export default function SelahApp() {
             </div>
             <div className="truncate min-w-0">
               <h5 className="text-sm font-bold text-white truncate leading-tight group-hover:text-suno-accent transition-colors">{activeSong.title}</h5>
-              <p className="text-xs text-gray-400 truncate leading-tight">{activeSong.genre} · Key of {activeSong.musicKey || chords[0]}</p>
+              <p className="text-xs text-gray-400 truncate leading-tight">{activeSong.genre} · Key of {activeSong.musicKey || activeSong?.chords?.[0]}</p>
             </div>
           </div>
 
-          {/* Center playback controls */}
           <div className="flex-1 flex flex-col items-center min-w-0 px-3 md:px-4">
-            <div className="flex items-center gap-4 md:gap-6 mb-1.5">
+            <div className="flex items-center gap-4">
               <button onClick={stop} className="text-gray-400 hover:text-white transition-colors" title="Stop">
                 <span className="material-symbols-outlined text-xl">stop</span>
               </button>
               <button
                 id="mini-player-play-btn"
                 onClick={() => (isPlaying ? pause() : play())}
-                className="w-9 h-9 md:w-10 md:h-10 rounded-full bg-white text-black flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-lg"
+                className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-lg"
                 title={isPlaying ? "Pause" : "Play"}
               >
                 <span className="material-symbols-outlined text-[22px]" style={{ fontVariationSettings: "'FILL' 1" }}>
                   {isPlaying ? "pause" : "play_arrow"}
                 </span>
               </button>
-              <button
-                onClick={() => router.push(`/song/${activeSong.id}`)}
-                className="text-gray-400 hover:text-white transition-colors"
-                title="Open Choir Desk"
-              >
-                <span className="material-symbols-outlined text-xl">equalizer</span>
-              </button>
-            </div>
-            {/* Chord progress strip */}
-            <div className="w-full flex items-center gap-2 overflow-hidden">
-              <span className="text-[9px] font-mono text-gray-500 shrink-0">Chords:</span>
-              <div className="flex gap-1 overflow-hidden min-w-0">
-                {chords.slice(0, 8).map((chord, idx) => {
-                  const isActive = isPlaying && currentChordIdx === idx;
-                  return (
-                    <span
-                      key={idx}
-                      className={`px-1.5 py-0.5 rounded text-[10px] font-mono border shrink-0 transition-all ${
-                        isActive
-                          ? "bg-suno-accent/20 text-suno-accent border-suno-accent/40 font-bold scale-105"
-                          : "bg-suno-gray-800 text-gray-400 border-transparent"
-                      }`}
-                    >
-                      {chord}
-                    </span>
-                  );
-                })}
-                {chords.length > 8 && (
-                  <span className="text-[9px] text-gray-600 font-mono self-center shrink-0">+{chords.length - 8}</span>
-                )}
-              </div>
-              <span className="text-[10px] font-mono text-suno-accent font-bold ml-auto shrink-0">{bpm}</span>
             </div>
           </div>
 
-          {/* Right: Choir Desk button — desktop only */}
-          <div className="hidden md:flex items-center justify-end w-1/4 shrink-0">
-            <button
-              id="open-choir-desk-btn"
-              onClick={() => router.push(`/song/${activeSong.id}`)}
-              className="px-4 py-2 bg-suno-accent/10 hover:bg-suno-accent/20 text-suno-accent text-xs font-bold rounded-full border border-suno-accent/20 flex items-center gap-1.5 transition-all"
-            >
-              <span className="material-symbols-outlined text-[15px]">equalizer</span>
-              Choir Desk
-            </button>
-          </div>
+          <button
+            id="open-choir-desk-btn"
+            onClick={() => router.push(`/song/${activeSong.id}?from=${activeTab}`)}
+            className="px-4 py-2 bg-suno-accent/10 hover:bg-suno-accent/20 text-suno-accent text-xs font-bold rounded-full border border-suno-accent/20 flex items-center gap-1.5 transition-all shrink-0"
+          >
+            <span className="material-symbols-outlined text-[15px]">equalizer</span>
+            <span className="hidden sm:inline">Choir Desk</span>
+          </button>
         </footer>
       )}
 
-      {/* Mobile bottom nav */}
-      <nav className={`md:hidden fixed ${activeSong ? "bottom-20" : "bottom-0"} left-0 w-full bg-suno-gray-900 border-t border-suno-gray-800 flex justify-around items-center h-16 px-4 pb-safe z-50 transition-all duration-300`}>
-        {[
-          { id: "home", label: "Discover", icon: "explore" },
-          { id: "create", label: "Create", icon: "add_circle" },
-          { id: "library", label: "Library", icon: "library_music" },
-          { id: "community", label: "Community", icon: "groups" },
-        ].map(({ id, label, icon }) => (
+      {/* Mobile bottom nav — always above mini player */}
+      <nav className={`md:hidden fixed ${activeSong ? "bottom-20" : "bottom-0"} left-0 w-full bg-suno-gray-900 border-t border-suno-gray-800 flex justify-around items-center h-16 px-4 pb-safe z-[55] transition-all duration-300`}>
+        {NAV_ITEMS.map(({ id, label, icon }) => (
           <button
             key={id}
             id={`mobile-nav-${id}`}
-            onClick={() => setTab(id)}
-            className={`flex flex-col items-center active:scale-90 transition-transform ${tab === id ? "text-suno-accent" : "text-gray-400"}`}
+            onClick={() => goToTab(id)}
+            className={`flex flex-col items-center active:scale-90 transition-transform ${activeTab === id ? "text-suno-accent" : "text-gray-400"}`}
           >
             <span className="material-symbols-outlined text-xl">{icon}</span>
-            <span className="text-[10px] font-bold mt-0.5">{label}</span>
+            <span className="text-xs font-bold mt-0.5">{label}</span>
           </button>
         ))}
       </nav>
@@ -449,16 +545,11 @@ export default function SelahApp() {
             <h1 className="font-serif text-2xl text-white tracking-[0.25em] uppercase font-medium">Selah</h1>
           </div>
           <nav className="flex flex-col items-center space-y-6">
-            {[
-              { id: "home", label: "Discover" },
-              { id: "create", label: "Create Studio" },
-              { id: "library", label: "Library" },
-              { id: "community", label: "Community" },
-            ].map(({ id, label }) => (
+            {NAV_ITEMS.map(({ id, label }) => (
               <button
                 key={id}
-                onClick={() => { setTab(id); setMenuOpen(false); }}
-                className={`text-xl font-medium transition-colors ${tab === id ? "text-suno-accent" : "text-gray-400 hover:text-white"}`}
+                onClick={() => { goToTab(id); setMenuOpen(false); }}
+                className={`text-xl font-medium transition-colors ${activeTab === id ? "text-suno-accent" : "text-gray-400 hover:text-white"}`}
               >
                 {label}
               </button>
@@ -482,6 +573,14 @@ export default function SelahApp() {
           )}
         </div>
       )}
+
+      <ProfileModal
+        visible={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
+        user={user}
+        profile={profile}
+        onUpdateProfileState={(updated) => setProfile(updated)}
+      />
     </div>
   );
 }

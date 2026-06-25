@@ -33,7 +33,10 @@ export default function AuthPage() {
           const params = new URLSearchParams(window.location.search);
           const nextParam = params.get("next");
           if (nextParam) {
-            dest = nextParam;
+            const { isSafeRedirect } = require("../lib/security");
+            if (isSafeRedirect(nextParam)) {
+              dest = nextParam;
+            }
           }
         }
         router.push(dest);
@@ -54,7 +57,10 @@ export default function AuthPage() {
         const params = new URLSearchParams(window.location.search);
         const nextParam = params.get("next");
         if (nextParam) {
-          dest = nextParam;
+          const { isSafeRedirect } = require("../lib/security");
+          if (isSafeRedirect(nextParam)) {
+            dest = nextParam;
+          }
         }
       }
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
@@ -86,7 +92,7 @@ export default function AuthPage() {
         </div>
 
         {/* Card */}
-        <div className="bg-suno-gray-900 border border-suno-gray-800 rounded-3xl p-8 shadow-2xl">
+        <div className="selah-panel p-8">
 
           {/* Mode toggle */}
           <div className="flex bg-suno-gray-950 rounded-2xl p-1 mb-7 border border-suno-gray-800">
@@ -153,7 +159,7 @@ export default function AuthPage() {
                 required
                 autoComplete="email"
                 placeholder="you@example.com"
-                className="w-full bg-suno-gray-950 border border-suno-gray-800 focus:border-suno-accent rounded-xl px-4 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none transition-colors"
+                className="selah-input px-4 py-3 text-sm"
               />
             </div>
             <div>
@@ -169,7 +175,7 @@ export default function AuthPage() {
                 autoComplete={authMode === "signup" ? "new-password" : "current-password"}
                 placeholder="••••••••"
                 minLength={6}
-                className="w-full bg-suno-gray-950 border border-suno-gray-800 focus:border-suno-accent rounded-xl px-4 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none transition-colors"
+                className="selah-input px-4 py-3 text-sm"
               />
             </div>
 
@@ -191,7 +197,7 @@ export default function AuthPage() {
               id="auth-submit-btn"
               type="submit"
               disabled={loading || googleLoading}
-              className="w-full py-3.5 rounded-2xl bg-suno-accent hover:bg-suno-accent/90 text-white font-bold text-sm transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed shadow-lg mt-2 flex items-center justify-center gap-2"
+              className="selah-btn-primary w-full py-3.5 text-sm flex items-center justify-center gap-2"
             >
               {loading ? (
                 <>

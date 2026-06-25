@@ -1,86 +1,75 @@
-// pages/api/stems.js
-// Proxies AI song generation requests to the SelahAI Python FastAPI backend.
-// The Python backend submits lyrics to apiframe.ai (Suno) and polls until complete.
-// Returns a full-mix audio URL + both Suno-generated track variants.
-
-const PYTHON_BACKEND_URL = process.env.SELAH_BACKEND_URL || "http://localhost:8000";
-
-// Max time to wait for song generation before giving up (5 minutes)
-const GENERATION_POLL_TIMEOUT_MS = 5 * 60 * 1000;
-const GENERATION_POLL_INTERVAL_MS = 4000;
+import { createPagesServerClient } from "@supabase/auth-helpers-nextjs";
+import { z } from "zod";
+import { buildStylePrompt } from "../../lib/prompts/buildStylePrompt";
+import { submitSong, pollSong } from "../../lib/apiframe";
+import { checkAndDeductCredit } from "../../lib/credits";
 
 export const config = {
   api: {
+    bodyParser: {
+      sizeLimit: "2mb",
+    },
     responseLimit: false,
-    bodyParser: { sizeLimit: "4mb" },
   },
 };
 
-/**
- * Polls the Python backend task status until the song is ready or timeout is exceeded.
- * @param {string} taskId
- * @returns {Promise<{audio_url: string, audio_title: string|null, tracks: Array}>}
- */
-async function pollTaskUntilComplete(taskId) {
-  const statusUrl = `${PYTHON_BACKEND_URL}/api/v1/stems/${taskId}`;
-  const deadline = Date.now() + GENERATION_POLL_TIMEOUT_MS;
+const StemsSchema = z.object({
+  lyrics: z.array(
+    z.object({
+      part: z.string().optional().nullable(),
+      line: z.string().optional().nullable(),
+      chords: z.array(z.string()).optional().nullable(),
+      arrangement: z.any().optional().nullable(),
+    })
+  ).optional().nullable(),
+  genre: z.string().optional().nullable(),
+  musicKey: z.string().optional().nullable(),
+  chords: z.array(z.string()).optional().nullable(),
+  title: z.string().optional().nullable(),
+  vocal_gender: z.string().optional().nullable(),
+  emotional_mode: z.string().optional().nullable(),
+  instrumentation: z.string().optional().nullable(),
+});
 
-  while (Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, GENERATION_POLL_INTERVAL_MS));
+const CALL_RESPONSE_TAG_MAP = {
+  "(Leader)": "[Leader]",
+  "(Choir)": "[Choir]",
+  "(All)": "[All]",
+  "(Solo)": "[Solo]",
+  "(Bridge)": "[Bridge]",
+};
 
-    const statusResponse = await fetch(statusUrl);
-    if (!statusResponse.ok) {
-      throw new Error(`Backend status check failed: HTTP ${statusResponse.status}`);
-    }
-
-    const statusData = await statusResponse.json();
-
-    if (statusData.status === "complete") {
-      return {
-        audio_url:   statusData.audio_url,
-        audio_title: statusData.audio_title,
-        tracks:      statusData.tracks || [],
-      };
-    }
-
-    if (statusData.status === "failed") {
-      throw new Error(statusData.error || "Song generation failed in backend");
-    }
-
-    // status === "queued" | "rendering" — keep polling
-    console.log(`[Stems] Task ${taskId} status: ${statusData.status}...`);
+function formatLyricsForSuno(lyrics) {
+  if (!lyrics || !Array.isArray(lyrics) || lyrics.length === 0) {
+    return "[Verse]\nHallelujah, praise the Lord\nYour mercy endures forever";
   }
 
-  throw new Error(`Song generation timed out after ${GENERATION_POLL_TIMEOUT_MS / 1000}s`);
-}
+  const linesByPart = {};
+  for (const entry of lyrics) {
+    const part = (entry.part || "Verse").trim();
+    let line = (entry.line || "").trim();
+    if (!line) continue;
 
-/**
- * Helper to call fetch with a timeout.
- */
-async function fetchWithTimeout(url, options, timeoutMs = 15000) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(url, { ...options, signal: controller.signal });
-    clearTimeout(timeoutId);
-    return response;
-  } catch (error) {
-    clearTimeout(timeoutId);
-    throw error;
+    // Translate call-and-response markers into Suno section tags
+    for (const [frontendTag, sunoTag] of Object.entries(CALL_RESPONSE_TAG_MAP)) {
+      if (line.startsWith(frontendTag)) {
+        line = sunoTag + " " + line.slice(frontendTag.length).trim();
+        break;
+      }
+    }
+
+    if (!linesByPart[part]) {
+      linesByPart[part] = [];
+    }
+    linesByPart[part].push(line);
   }
-}
 
-// Builds a gospel I–IV–V–vi chord progression for a given root key
-function buildGospelChords(root) {
-  const NOTES = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
-  const idx = NOTES.indexOf(root);
-  if (idx === -1) return [root, "F", "G", "Am"];
-  return [
-    NOTES[idx],
-    NOTES[(idx + 5) % 12],
-    NOTES[(idx + 7) % 12],
-    NOTES[(idx + 9) % 12] + "m",
-  ];
+  const formattedSections = [];
+  for (const [part, lines] of Object.entries(linesByPart)) {
+    formattedSections.push(`[${part}]\n${lines.join("\n")}`);
+  }
+
+  return formattedSections.join("\n\n").substring(0, 5000);
 }
 
 export default async function handler(req, res) {
@@ -88,79 +77,114 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method Not Allowed" });
   }
 
-  const { lyrics, genre, musicKey, chords, title, section_structure, vocal_gender, emotional_mode, instrumentation } = req.body;
+  // 1. Verify Authentication
+  const supabase = createPagesServerClient({ req, res });
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
 
-  const resolvedChords = Array.isArray(chords) && chords.length > 0
-    ? chords
-    : buildGospelChords(musicKey || "G");
+  if (!session) {
+    return res.status(401).json({ error: "Unauthorized", message: "Please sign in to continue." });
+  }
 
-  const songTitle = title || "Selah Song";
+  const userId = session.user.id;
 
-  console.log(
-    `[Stems] Requesting AI song generation — key: ${musicKey}, genre: ${genre}, chords: ${resolvedChords.join(", ")}`
-  );
+  // 2. Validate Inputs
+  const validation = StemsSchema.safeParse(req.body);
+  if (!validation.success) {
+    return res.status(422).json({
+      error: "validation_failed",
+      message: "Some fields are invalid. Please check your input.",
+      details: validation.error.format(),
+    });
+  }
 
-  const flatLyrics = Array.isArray(lyrics) ? lyrics : [];
+  const {
+    lyrics,
+    genre,
+    musicKey,
+    chords,
+    title,
+    vocal_gender,
+    emotional_mode,
+    instrumentation,
+  } = validation.data;
+
+  // 3. Credit Verification and Atomic Deduction (Costs 3 credits)
+  console.log(`[Stems] Checking and deducting 3 credits for user: ${userId}`);
+  const creditCheck = await checkAndDeductCredit(userId, 3);
+  if (!creditCheck.allowed) {
+    return res.status(402).json({
+      error: "insufficient_credits",
+      message: "You have insufficient credits. Please top up to generate songs.",
+    });
+  }
 
   try {
-    // Submit the generation job to the Python backend
-    const submitResponse = await fetchWithTimeout(
-      `${PYTHON_BACKEND_URL}/api/v1/stems`,
-      {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title:             songTitle,
-          key:               musicKey || "G",
-          genre:             genre || "Contemporary",
-          chords:            resolvedChords,
-          lyrics:            flatLyrics,
-          section_structure: section_structure || null,
-          vocal_gender:      vocal_gender || null,
-          emotional_mode:    emotional_mode || null,
-          instrumentation:   instrumentation || null,
-        }),
-      },
-      20000  // 20s timeout for the initial submit call
-    );
+    const isInstrumental = instrumentation === "instrumental";
+    const lyricsToSend = isInstrumental ? "[Instrumental]" : formatLyricsForSuno(lyrics);
 
-    if (!submitResponse.ok) {
-      const errorBody = await submitResponse.text().catch(() => "(no body)");
-      throw new Error(`Backend submit failed: HTTP ${submitResponse.status} — ${errorBody}`);
-    }
-
-    const submitData = await submitResponse.json();
-    const taskId = submitData.task_id;
-
-    if (!taskId) {
-      throw new Error("Backend did not return a task_id");
-    }
-
-    console.log(`[Stems] Job accepted by backend — task_id: ${taskId}`);
-
-    // Poll until complete
-    const result = await pollTaskUntilComplete(taskId);
-
-    console.log(`[Stems] Song generation complete — audio_url: ${result.audio_url}`);
-
-    return res.status(200).json({
-      audio_url:   result.audio_url,
-      audio_title: result.audio_title,
-      tracks:      result.tracks,
-      task_id:     taskId,
-      source:      "apiframe_suno",
-      // For backwards compatibility with any code that reads `stems`:
-      // expose the full mix as a single "full_mix" stem.
-      stems: { full_mix: result.audio_url },
+    const stylePrompt = buildStylePrompt({
+      genre: genre || "Contemporary",
+      key: musicKey || "G",
+      chords: chords || [],
+      emotionalMode: emotional_mode,
+      instrumentation,
+      vocalGender: vocal_gender,
     });
 
-  } catch (err) {
-    console.error("[Stems] Generation error:", err.message);
+    console.log(`[Stems] Submitting job to apiframe.ai — instrumental: ${isInstrumental}`);
+    
+    // Submit to apiframe.ai
+    const compoundJobId = await submitSong({
+      lyrics: lyricsToSend,
+      stylePrompt,
+      vocalGender: vocal_gender,
+      instrumentalOnly: isInstrumental,
+    });
 
-    // Signal the frontend to fall back to the local Web Audio synthesizer
+    console.log(`[Stems] Job submitted successfully. Compound Job ID: ${compoundJobId}`);
+
+    // Poll until complete or 5-minute timeout
+    const pollTimeoutMs = 5 * 60 * 1000;
+    const pollIntervalMs = 4000;
+    const deadline = Date.now() + pollTimeoutMs;
+    let result = null;
+
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+      console.log(`[Stems] Polling job status for: ${compoundJobId}`);
+      const pollRes = await pollSong(compoundJobId);
+      if (pollRes && pollRes.status === "complete") {
+        result = pollRes;
+        break;
+      }
+    }
+
+    if (!result) {
+      throw new Error("Song generation timed out on the AI provider.");
+    }
+
+    console.log(`[Stems] Generation complete. Audio URL: ${result.audio_url}`);
+
+    const clientJobId = compoundJobId.split(":")[0];
+
+    return res.status(200).json({
+      audio_url: result.audio_url,
+      audio_title: result.audio_title,
+      tracks: result.tracks,
+      task_id: clientJobId,
+      source: "apiframe_suno",
+      stems: { full_mix: result.audio_url },
+    });
+  } catch (err) {
+    console.error("[Stems] Generation error:", err?.message || err);
+
+    // Rollback credit deduction in case of immediate failure (if possible)
+    // For now we return 503 and tell the frontend to fall back
     return res.status(503).json({
-      error:    "ai_generation_failed",
-      message:  err.message,
+      error: "ai_generation_failed",
+      message: err?.message || err,
       fallback: "web_audio",
     });
   }

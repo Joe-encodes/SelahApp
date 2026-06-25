@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../lib/supabase";
+import { AudioProvider } from "../lib/audioContext";
 import "../styles/globals.css";
 
 export default function App({ Component, pageProps }) {
@@ -18,7 +19,10 @@ export default function App({ Component, pageProps }) {
           const params = new URLSearchParams(window.location.search);
           const nextParam = params.get("next");
           if (nextParam) {
-            dest = nextParam;
+            const { isSafeRedirect } = require("../lib/security");
+            if (isSafeRedirect(nextParam)) {
+              dest = nextParam;
+            }
           }
         }
         router.push(dest);
@@ -27,5 +31,9 @@ export default function App({ Component, pageProps }) {
     return () => subscription.unsubscribe();
   }, [router]);
 
-  return <Component {...pageProps} />;
+  return (
+    <AudioProvider>
+      <Component {...pageProps} />
+    </AudioProvider>
+  );
 }

@@ -1,120 +1,226 @@
-# SelahAI: Technical Architecture & System Walkthrough
+# SelahAI: Full Technical Architecture & Codebase Walkthrough
 
-This document outlines the architecture, data flows, system constraints, and file-by-file blueprints of the SelahAI Gospel Music Co-Writer application.
-
----
-
-## 1. Executive Summary & Constraints
-
-### What Has Been Achieved
-- **Full UI Makeover:** Styled after the Suno reference app, featuring responsive mobile navigation drawer, clean dashboard columns, Genre vibe presets, and a collapsible advanced settings drawer.
-- **Richer Playback Routing:** Replaced the full-screen modal overlay on the dashboard with a dedicated page-route structure `/song/[id]` mimicking Spotify's rehearsal workspace, while restoring user dashboard tabs via URL parameters.
-- **Decoupled Loading Indicators:** Separated local synthesis and AI generation spinner states, introducing an elapsed time counter and progress stage overlay to eliminate confusing dual-spinning buttons.
-- **Dynamic Prompt System:** Always prepends a 100% authentic **Nigerian Gospel Core Identity** style DNA. Truncates/reconstructs style prompts at word boundaries (`clean_truncate` / `truncateAtWordBoundary`) to respect Suno's 1,000-character parameter limit and Groq's constraints without word fragments.
-- **Emotional Modes & Instrumentation:** Replaced the legacy energy/texture model with **6 Emotional Modes** (e.g. Lament & Comfort, Triumph & Declaration, Rest & Surrender) and **4 Instrumentation Setups** (e.g. Full Band, Vocal & Piano, A Cappella Choir, Instrumental Only).
-- **Scripture Translation Prompting:** Enriches Groq lyric generation with a structured translation rule that processes scripture references into first-person testimonies/prayers instead of literal quotes.
-- **Production Stems & MIDI Exports:** MIDI generation engine for custom section arrangements, and local browser-based `OfflineAudioContext` WAV backing track synthesis.
-- **FastAPI Backend (Python) & apiframe.ai Integration:** A lightweight FastAPI server running locally alongside the Next.js frontend to offload symbolic MIDI creation and orchestrate cloud music generation via Suno (apiframe.ai) with multi-key rotation and usage counters.
-- **Offline Shell & Database Caching:** Custom Service Worker shell caching with IndexedDB caching of all generated song metadata, audio tracks, and selected song state.
-- **Decoupled Local Synth:** Obsolete local ONNX vocal models (over 230 MB of files including `acoustic.onnx` and `vocoder.onnx`) and draft python codes (`synth_engine.py`, `phonemizer.py`) have been completely removed to clean up the backend space.
+This document serves as a complete engineering reference for the SelahAI Gospel Music Co-Writer platform. It details the high-level system flows, database structures, component states, and exact functionality of every codebase file to guide implementation and security audits.
 
 ---
 
-## 2. High-Level Data Flows
+## 1. System Blueprint & Core Constraints
 
-### A. Song Generation & Lyric Translation Flow
+### Application Concept
+SelahAI is a Next.js full-stack web application designed for choir rehearsal and gospel song creation. It leverages AI (via Groq Llama-3.3-70b-versatile and Suno V4.5+ via APIFrame) to write lyrics, arrange chord progressions, and synthesize backing tracks, alongside a real-time client-side Web Audio synthesis engine for SATB choir practice.
+
+### Ground-Level Constraints
+1. **Serverless Transition Readiness**: State management must eventually be decoupled from temporary local storage. Background tasks, API credit counters, and queues must persist in a database (Supabase) rather than in-memory states to support serverless deployment.
+2. **Security & Ownership**: Row Level Security (RLS) is enabled in Supabase. The application must enforce that only the original creator of a song can modify its layout, lyrics, chord mappings, or public status.
+3. **Audio Blend Isolation**: Avoid layering synthesis voices on top of generated backing tracks. When a Suno backing track is active, local oscillators are muted, and the Web Audio context only drives the visual prompter timing.
+
+---
+
+## 2. High-Level Data & Playback Flows
+
+### A. Creation Workflow (Create Studio)
 ```
-[User Selects Theme/Scripture, Mode, Setup]
-       │
+[User Form Selection]
+       │ (Theme, Key, Scripture, Genre, Emotional Mode, Instrumentation, Vocal Lead)
        ▼
-[Next.js API: pages/api/generate.js] 
-       │ (Enforces input character bounds: Scripture <= 500, Lyrics <= 4000)
-       │ (Applies Scripture Translation Rule & rotates Groq API keys)
+[pages/api/generate.js]
+       │ 1. Word-boundary truncation of bounds (theme <= 100, scripture <= 500, lyrics <= 4000)
+       │ 2. Apply Scripture-to-First-Person Testimony Translation Rule
+       │ 3. Rotate Groq API Keys (1 to 4)
        ▼
-[Groq LLM: Llama-3.3-70b] ──► (Returns structured JSON song structure)
-       │
+[Groq Llama-3.3-70b-versatile]
+       │ (Generates structured JSON lyrics, chords, arrangement, and production notes)
        ▼
-[Next.js API Response] ──► [IndexedDB Cache] ──► [UI State Render]
+[Next.js Client saveSong()] ──► [IndexedDB local cache] & [Supabase songs table (via RLS)]
 ```
 
-### B. Rehearsal Playback & Audio Synthesis Flow
+### B. Playback and Synthesis Workflow (Choir Desk)
 ```
-[User Clicks Play in Dashboard or Choir Desk]
+[User Clicks Play in Player.jsx]
        │
-       ├─► [Web Audio API: useGospelAudio.js]
+       ├─► [Web Audio Engine: useGospelAudio.js]
        │         │
-       │         ├─► If Song has AI audio_url: Loads and plays Suno MP3 backing track,
-       │         │   suppressing synth oscillators while keeping visual chord prompter synced.
+       │         ├─► If AI audio_url is present:
+       │         │   Loads backing track MP3 buffer. Plays track. Mutes local synth oscillators.
        │         │
-       │         └─► If no AI track exists: Synthesizes local Piano, Bass, and Guitar 
-       │             oscillators in real-time.
+       │         └─► If no AI backing track is loaded:
+       │             Plays real-time Web Audio Synthesizer (Soprano, Alto, Tenor, Lead, Bass, Percussion).
        │
-       └─► [Player Prompt Timeline] ──► Highlights active chord box and moves prompter
-                                         lyrics index dynamically synced to beat timer.
+       └─► [Player Prompt Timeline]
+                 │ (Calculates beats and matches active chords/lyrics index)
+                 ▼
+             [Karaoke Lyrics Highlight (Karaoke Vibe)]
 ```
 
 ---
 
-## 3. File-by-File Blueprint & Specifications
+## 3. Database Schema & RLS Policies
 
-### A. Python Backend Component (`/backend`)
+All cloud storage is managed by Supabase. Local storage acts as an offline-first caching layer utilizing IndexedDB.
 
-#### 1. [backend/main.py](file:///c:/Users/ESTHER/Desktop/SelahApp/backend/main.py)
-- **Role:** REST API Entrypoint (FastAPI).
-- **Functions:**
-  - `generate_melody(MelodyRequest)`: Endpoint `/api/v1/melody` generates backing track MIDI files using a background thread pool executor.
-  - `generate_stems(StemsRequest)`: Endpoint `/api/v1/stems` initiates background cloud music generation tasks via `apiframe_adapter.py`.
-  - `get_stem_status(task_id)`: Checks progress of ongoing background generation tasks.
-  - `download_file(file_name)`: Serves synthesized backing tracks directly to the client browser from `backend/outputs`.
-
-#### 2. [backend/apiframe_adapter.py](file:///c:/Users/ESTHER/Desktop/SelahApp/backend/apiframe_adapter.py)
-- **Role:** Connection adapter to `apiframe.ai`.
-- **Functions:**
-  - Submits custom mode prompt payloads (lyrics in `prompt`, generated style in `style`) to `/v2/music/generate`.
-  - Handles API key rotation with dynamic usage thresholds.
-  - Uses compound `jobId:api_key` formats to ensure polling checks are routed to the key that submitted the request.
-
-#### 3. [backend/midi_generator.py](file:///c:/Users/ESTHER/Desktop/SelahApp/backend/midi_generator.py)
-- **Role:** Symbolic MIDI generator.
-- **Key Logic:**
-  - Instantiates `MIDIFile` tracks for different channels: Piano, Bass, Guitar, and Percussion.
-  - Automates drum fills (kick, snare, hihat velocity rolls) on beat 4 of transition bars based on section structure flags.
-
-#### 4. [backend/music_theory.py](file:///c:/Users/ESTHER/Desktop/SelahApp/backend/music_theory.py)
-- **Role:** Mathematical Music Theory Resolver.
-- **Functions:**
-  - Resolves note numbers and transposition steps from string pitch aliases (e.g. `C#4` -> `61`).
-  - Contains pitch frequency tables mapping roots to chord harmonics.
+### SQL Definition (`lib/schema.sql`)
+1. **`songs` table**: Stores metadata, lyrics (JSONB), chords (array), track configurations, and public status.
+   - **RLS Policy 1**: "Users can manage their own songs" (`using (auth.uid() = user_id)` for `ALL`).
+   - **RLS Policy 2**: "Public songs are readable by anyone" (`using (is_public = true)` for `SELECT`).
+2. **`song_likes` table**: Tracks user likes for community songs.
+   - **RLS Policy**: "Users manage their own likes" (`using (auth.uid() = user_id)`).
+3. **`profiles` table**: Synchronizes user details (display name and avatar).
+   - **Database Trigger (`handle_new_user`)**: Auto-creates a profile row on auth sign-up, default-naming users based on their email prefix or OAuth full name.
+   - **RLS Policy**: "Users can update their own profile" (`using (auth.uid() = id)`).
+4. **`song_comments` table**: Stores user discussions under individual songs.
+   - **RLS Policies**: "Anyone can read comments" (SELECT), "Authenticated users can comment" (INSERT), "Users can delete own comments" (DELETE).
+5. **`comment_reactions` table**: Tracks user likes/hearts on comments.
+   - **RLS Policies**: "Anyone can read comment reactions" (SELECT), "Authenticated users can toggle reaction" (ALL).
 
 ---
 
-### B. Frontend Next.js Client Component
+## 4. Comprehensive File-by-File Analysis
 
-#### 1. [lib/useGospelAudio.js](file:///c:/Users/ESTHER/Desktop/SelahApp/lib/useGospelAudio.js)
-- **Role:** Web Audio API synthesis engine hook.
-- **Key Features:**
-  - Schedules hihats, kicks, snares, and log drums via precise `AudioContext` lookahead timers.
-  - Integrates `loadBackingTrack` and `clearBackingTrack` to feed cloud MP3 audio buffers into the gain pipeline, muting local synthesizer channels when a backing track is active.
+### A. Frontend Core Pages (`/pages`)
+
+#### 1. [pages/index.jsx](pages/index.jsx)
+- **Role**: Application Dashboard and navigation core.
+- **Key Functions & Logic**:
+  - Initializes user session state (`user`, `profile`) and computes display initials dynamically.
+  - Queries active songs list (`getAllSongs`) and merges it with mock fallbacks.
+  - Employs `useGospelAudio` hook, syncing the persistent bottom media player bar.
+  - Sidebar profile block is fully clickable, launching the `ProfileModal` to update credentials.
+  - Embeds sub-tabs: `HomeTab` (Discover), `CreateTab` (Create Studio, strictly for AI Song Builder), `RehearseTab` (Rehearsal Room for presets catalog and practicing/editing saved songs), `LibraryTab` (Library, styled in a clean grid card format), and `CommunityTab` (Explore Feed).
+
+#### 2. [pages/song/\[id\].jsx](pages/song/[id].jsx)
+- **Role**: Dedicated spotify-like page route for Choir Desk rehearsal.
+- **Key Functions & Logic**:
+  - Extracts the dynamic URL `id` parameter.
+  - Loads matching song object via `getSong` service, falling back to IndexedDB if offline.
+  - Keeps sidebar design synchronized with the dashboard, rendering a clickable profile block.
+  - Instantiates the `Player` component with full audio playback state.
+  - Embeds a Comments section beneath the player, supporting real-time fetching (`GET`), posting (`POST`), deleting (`DELETE`), and toggling reactions (`POST /api/song/comment-like`).
+
+#### 3. [pages/auth.jsx](pages/auth.jsx)
+- **Role**: Account Authentication page.
+- **Key Functions & Logic**:
+  - Supports classic Email/Password flows (Sign In and Account Creation).
+  - Integrates Google OAuth Sign-In via Supabase client.
+  - Triggers redirects back to target destination using search parameter `?next=`.
+
+---
+
+### B. Next.js API Routes (`/pages/api`)
+
+#### 1. [pages/api/generate.js](pages/api/generate.js)
+- **Role**: Core LLM song lyric and structure generator.
+- **Key Functions & Logic**:
+  - `truncateAtWordBoundary(text, maxLen)`: Cleans parameters (theme <= 100, scripture <= 500, rawSongText <= 4000) at word boundaries to avoid broken words in prompts.
+  - Rotates up to 4 Groq API keys to prevent rate limit limits.
+  - Builds dynamic prompts based on emotional mode mappings and instrumentation profiles.
+  - Executes **Scripture Translation Rule**: translating the verse references into first-person testimonies or prayers rather than direct literal quotes.
+  - Validates and parses Groq Llama-3.3-70b-versatile JSON output, flat-mapping sections into chords/lyric line maps.
+
+#### 2. [pages/api/stems.js](pages/api/stems.js)
+- **Role**: Proxies requests for Suno AI full-mix generation.
+
+#### 3. [pages/api/melody.js](pages/api/melody.js)
+- **Role**: Proxies backing track generation requests.
+
+#### 4. [pages/api/song/stems-split.js](pages/api/song/stems-split.js)
+- **Role**: Handles audio stem separation and packaging.
+- **Key Functions & Logic**:
+  - Performs authentication and song ownership verification.
+  - Deducts 3 credits for stem separation.
+  - If a `REPLICATE_API_TOKEN` is found, submits song's Suno `audio_url` to Replicate's `cjwbw/demucs` model, polling until success, and downloading individual stems (`vocals`, `drums`, `bass`, `accompaniment`).
+  - Gracefully falls back to local backing track MIDI and full mix MP3 if the token is missing, writing a `readme.txt` into the ZIP explaining configuration options.
+  - Uses `jszip` to bundle tracks and downloads them dynamically as a ZIP.
+
+#### 5. [pages/api/song/comments.js](pages/api/song/comments.js)
+- **Role**: CRUD operations for comments.
+- **Key Functions & Logic**:
+  - `GET`: Reads comments for a `songId` joining user profiles and including like states.
+  - `POST`: Validates content (using Zod) and saves a new comment.
+  - `DELETE`: Verifies user ownership and deletes comment.
+
+#### 6. [pages/api/song/comment-like.js](pages/api/song/comment-like.js)
+- **Role**: Toggles hearts/reactions on song comments.
+
+---
+
+### C. Shared React Components (`/components`)
+
+#### 1. [components/Player.jsx](components/Player.jsx)
+- **Role**: Main choir rehearsal dashboard.
+- **Key Functions & Logic**:
+  - `isOwner`: Checks if the logged-in user owns the song: `!song.user_id || (user && String(user.id) === String(song.user_id))`.
+  - `handleTogglePublish`: Guarded to prevent non-owners from toggling the publication status.
+  - Synchronizes active playback chord indices with lyrics scroll timeline.
+  - Controls local synthesis trigger and dispatches asynchronous cloud synthesis requests.
+  - Integrates "Download Multitrack Stems (.zip)" inside the downloads panel, requesting `POST /api/song/stems-split` and saving the resulting file.
+
+#### 2. [components/ProfileModal.jsx](components/ProfileModal.jsx)
+- **Role**: User Profile Settings management modal.
+- **Key Functions & Logic**:
+  - Captures display name and avatar URL edits.
+  - Communicates with Supabase database profiles update handler.
+  - Provides instant success feedback and closes modal automatically.
+
+#### 3. [components/StemRow.jsx](components/StemRow.jsx)
+- **Role**: Individual track mixer strip.
+- **Key Functions & Logic**:
+  - Renders volume sliders, mute buttons, and solo buttons.
+
+#### 4. [components/tabs/RehearseTab.jsx](components/tabs/RehearseTab.jsx)
+- **Role**: Rehearsal Hub / Practice Room UI.
+- **Key Functions & Logic**:
+  - Lists and searches popular Christian Classics.
+  - Lists and searches preexisting library songs.
+  - Clicking on classics bypasses AI credits and loads preset chords/lyrics instantly into the Choir Desk.
+  - Clicking library songs opens the Choir Desk dynamic practice workstation.
+
+---
+
+### D. Utility Services (`/lib`)
+
+#### 1. [lib/songService.js](lib/songService.js)
+- **Role**: Primary data-management orchestrator.
+- **Key Functions & Logic**:
+  - `saveSong(song)`: Always saves locally in IndexedDB first. Checks user ownership `song.user_id === user.id` before dispatching updates/saves to Supabase.
+  - `getProfile(userId)`: Queries the `profiles` table to pull user display names and avatars.
+  - `updateProfile(userId, displayName, avatarUrl)`: Saves profile edits to the database.
+
+#### 2. [lib/constants/popularSongs.js](lib/constants/popularSongs.js)
+- **Role**: Static database of popular Christian songs (chords, lyrics structure) loaded instantly to bypass AI generation and route directly to dynamic workstations.
+
+#### 2. [lib/useGospelAudio.js](lib/useGospelAudio.js)
+- **Role**: Audio player context hook and Web Audio synthesizer engine.
+- **Key Functions & Logic**:
+  - Schedules hihats, kicks, snares, and log drums via precise `AudioContext` timers.
+  - Integrates `loadBackingTrack` to feed MP3 audio buffers into the gain pipeline, muting local synthesizer channels when a backing track is active.
   - Exposes playback hooks: `play`, `pause`, `stop`, `volumes`, and client-side WAV/MIDI file renders.
 
-#### 2. [components/Player.jsx](file:///c:/Users/ESTHER/Desktop/SelahApp/components/Player.jsx)
-- **Role:** Choir Desk dashboard and rehearsal UI.
-- **Core Elements:**
-  - Renders visual chord indicators and prompts lyrics aligned with active chords.
-  - Controls vocal and backing track mixers, saves selected version tracks, and persists generated state to the parent via `onUpdateSong`.
-  - Implements independent loading states, elapsed time tracking, and stage updates to prevent spinner collision.
+#### 3. [lib/indexedDb.js](lib/indexedDb.js)
+- **Role**: Database configuration and CRUD handlers for local IndexedDB stores.
 
-#### 3. [pages/song/\[id\].jsx](file:///c:/Users/ESTHER/Desktop/SelahApp/pages/song/%5Bid%5D.jsx)
-- **Role:** Dedicated dynamic page route for Choir Desk rehearsal.
-- **Details:** Replaces the full-screen modal overlay with a Spotify-like dynamic route, rendering the `Player` component with a dedicated workspace sidebar and responsive navigation layout.
+---
 
-#### 4. [pages/api/generate.js](file:///c:/Users/ESTHER/Desktop/SelahApp/pages/api/generate.js)
-- **Role:** LLM lyric/chords generator.
-- **Design:**
-  - Cleans and bounds input variables using word-boundary truncation (`cleanTheme` <= 100, `cleanScripture` <= 500, `cleanRawSongText` <= 4000).
-  - Rotates Groq API keys and calls Llama-3.3-70b-versatile with custom scripture-to-lyrics guidance.
+### E. Python Backend Component (`/backend`)
 
-#### 5. [lib/indexedDb.js](file:///c:/Users/ESTHER/Desktop/SelahApp/lib/indexedDb.js)
-- **Role:** Offline indexed storage.
-- **Logic:**
-  - Initializes database (`SelahDB`) storing generated songs locally to ensure persistence during offline use.
+#### 1. [backend/main.py](backend/main.py)
+- **Role**: REST API entrypoint (FastAPI) and task manager.
+- **Key Functions & Logic**:
+  - Configures CORS rules and output file directory mappings.
+  - `generate_melody()`: CPU-bound thread pool executor generating MIDI files.
+  - `generate_stems()`: Queues asynchronous jobs to compose Suno tracks.
+
+#### 2. [backend/music_theory.py](backend/music_theory.py)
+- **Role**: Mathematical music theory structures.
+- **Key Functions & Logic**:
+  - Note mapping, octave frequency offsets, close voicings, scale models, and walking bass generators.
+
+#### 3. [backend/midi_generator.py](backend/midi_generator.py)
+- **Role**: Symbolic MIDI file binary creation engine.
+
+#### 4. [backend/apiframe_adapter.py](backend/apiframe_adapter.py)
+- **Role**: APIFrame client adapter.
+- **Key Functions & Logic**:
+  - Submits payload configurations to `/v2/music/generate`, rotating API keys, and polling jobs.
+
+#### 5. [backend/usage_counter.py](backend/usage_counter.py)
+- **Role**: Monthly credit guardrail checking usage counters against quota configurations.
