@@ -207,6 +207,11 @@ export default function SelahApp() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ theme, musicKey, langs, genre: selectedGenre, harmony, scripture, rawSongText, emotional_mode, instrumentation, vocal_gender }),
       });
+      if (res.status === 401) {
+        alert("Your session has expired. Redirecting to sign in page...");
+        await handleSignOut();
+        return;
+      }
       const data = await res.json();
       const newSong = {
         id: Date.now(),
