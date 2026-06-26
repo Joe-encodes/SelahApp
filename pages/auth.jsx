@@ -21,14 +21,18 @@ export default function AuthPage() {
 
     try {
       if (authMode === "signup") {
-        const { error: signUpError } = await supabase.auth.signUp({ email, password });
+        const { data, error: signUpError } = await supabase.auth.signUp({ email, password });
         if (signUpError) throw signUpError;
-        setSuccessMessage("Check your email for a confirmation link, then sign in.");
-        setAuthMode("signin");
+        if (data?.session) {
+          router.push("/app");
+        } else {
+          setSuccessMessage("Account created successfully! You can now sign in.");
+          setAuthMode("signin");
+        }
       } else {
         const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
         if (signInError) throw signInError;
-        let dest = "/";
+        let dest = "/app";
         if (typeof window !== "undefined") {
           const params = new URLSearchParams(window.location.search);
           const nextParam = params.get("next");
@@ -52,7 +56,7 @@ export default function AuthPage() {
     setError("");
     setGoogleLoading(true);
     try {
-      let dest = "/";
+      let dest = "/app";
       if (typeof window !== "undefined") {
         const params = new URLSearchParams(window.location.search);
         const nextParam = params.get("next");

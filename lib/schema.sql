@@ -53,6 +53,9 @@ CREATE TABLE IF NOT EXISTS profiles (
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS credits INT DEFAULT 3;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS credits_reset_at TIMESTAMPTZ;
 
+-- Ensure case-insensitive unique display names
+CREATE UNIQUE INDEX IF NOT EXISTS unique_profile_display_name ON profiles (LOWER(display_name));
+
 -- 5. Song comments table
 CREATE TABLE IF NOT EXISTS song_comments (
   id          bigserial PRIMARY KEY,

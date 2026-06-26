@@ -151,7 +151,7 @@ export const CreateTab = ({ onGenerate }) => {
             {/* Genre Presets */}
             <div className="space-y-3">
               <div className="flex justify-between items-center">
-                <label className="text-sm md:text-base font-extrabold text-gray-200 uppercase tracking-widest block">
+                <label className="text-xs font-extrabold text-gray-200 uppercase tracking-widest block">
                   Genre Vibe Preset
                 </label>
                 {genre !== undefined && (
@@ -195,7 +195,7 @@ export const CreateTab = ({ onGenerate }) => {
             {/* Instrumentation */}
             <div className="space-y-3">
               <div className="flex justify-between items-center">
-                <label className="text-sm md:text-base font-extrabold text-gray-200 uppercase tracking-widest block">
+                <label className="text-xs font-extrabold text-gray-200 uppercase tracking-widest block">
                   Instrumentation setup
                 </label>
                 {instrumentation !== undefined && (
@@ -234,7 +234,7 @@ export const CreateTab = ({ onGenerate }) => {
             {/* Vocal Lead */}
             <div className="space-y-3">
               <div className="flex justify-between items-center">
-                <label className="text-sm md:text-base font-extrabold text-gray-200 uppercase tracking-widest block">
+                <label className="text-xs font-extrabold text-gray-200 uppercase tracking-widest block">
                   Vocal Lead Gender
                 </label>
                 {vocalGender !== undefined && (
@@ -268,7 +268,7 @@ export const CreateTab = ({ onGenerate }) => {
             {/* Target Key */}
             <div className="space-y-3">
               <div className="flex justify-between items-center">
-                <label className="text-sm md:text-base font-extrabold text-gray-200 uppercase tracking-widest block">
+                <label className="text-xs font-extrabold text-gray-200 uppercase tracking-widest block">
                   Target Musical Key
                 </label>
                 {musicKey !== undefined && (
@@ -301,7 +301,7 @@ export const CreateTab = ({ onGenerate }) => {
             {/* Languages */}
             <div className="space-y-3">
               <div className="flex justify-between items-center">
-                <label className="text-sm md:text-base font-extrabold text-gray-200 uppercase tracking-widest block">
+                <label className="text-xs font-extrabold text-gray-200 uppercase tracking-widest block">
                   Languages
                 </label>
                 {langs !== undefined && (
@@ -337,7 +337,7 @@ export const CreateTab = ({ onGenerate }) => {
             {/* Creative Slider */}
             <div className="space-y-3">
               <div className="flex justify-between items-center">
-                <label className="text-sm md:text-base font-extrabold text-gray-200 uppercase tracking-widest block">
+                <label className="text-xs font-extrabold text-gray-200 uppercase tracking-widest block">
                   Arrangement Style (Structured vs Creative)
                 </label>
                 {temperature !== undefined && (

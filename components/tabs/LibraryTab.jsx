@@ -73,7 +73,7 @@ export const LibraryTab = ({ songs, songsLoaded, onPlay, onQuickPlay, activeSong
                 key={song.id}
                 onClick={() => onPlay(song)}
                 className={`group flex flex-col ${
-                  isActive ? "selah-card-interactive border-suno-accent/50 shadow-[0_0_16px_rgba(35,212,94,0.15)] border-suno-accent/70 animate-pulse" : "selah-card-interactive"
+                  isActive ? "selah-card-interactive border-suno-accent/50 shadow-[0_0_16px_rgba(35,212,94,0.15)] border-suno-accent/70" : "selah-card-interactive"
                 }`}
               >
                 <div className="relative aspect-square overflow-hidden bg-suno-gray-800">

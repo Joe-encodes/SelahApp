@@ -14,7 +14,7 @@ export default function App({ Component, pageProps }) {
         router.push("/auth");
       }
       if (event === "SIGNED_IN" && router.pathname === "/auth") {
-        let dest = "/";
+        let dest = "/app";
         if (typeof window !== "undefined") {
           const params = new URLSearchParams(window.location.search);
           const nextParam = params.get("next");

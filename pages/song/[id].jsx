@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
-import { getSong, saveSong, getProfile, getPublicSongs } from "../../lib/songService";
+import { getSong, saveSong, getProfile, getPublicSongs, getLikesForSong, toggleLike } from "../../lib/songService";
 import { ProfileModal } from "../../components/ProfileModal";
 import { useAudioContext } from "../../lib/audioContext";
 import { Player } from "../../components/Player";
@@ -62,14 +62,51 @@ export default function SongPage() {
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [newComment, setNewComment] = useState("");
   const [commentError, setCommentError] = useState(null);
+  const [isLikedBySelf, setIsLikedBySelf] = useState(false);
 
   useEffect(() => {
-    if (!id) return;
+    if (song && song.supabase_id) {
+      getLikesForSong(song.supabase_id).then((res) => {
+        setIsLikedBySelf(res.userLiked);
+      });
+    }
+  }, [song, user]);
+
+  const handleLikeSong = async () => {
+    if (!user) {
+      alert("Please sign in to like songs.");
+      return;
+    }
+    setCommentError(null);
+    let currentSong = song;
+    if (!currentSong.supabase_id) {
+      try {
+        const saved = await saveSong(currentSong);
+        if (saved && saved.supabase_id) {
+          currentSong = saved;
+          setSong(saved);
+        } else {
+          setCommentError("Could not save song to cloud database before liking.");
+          return;
+        }
+      } catch (err) {
+        setCommentError("Could not save song to cloud database before liking.");
+        return;
+      }
+    }
+    if (currentSong.supabase_id) {
+      const liked = await toggleLike(currentSong.supabase_id);
+      setIsLikedBySelf(liked);
+    }
+  };
+
+  useEffect(() => {
+    if (!song || !song.supabase_id) return;
     setCommentsLoading(true);
     supabase
       .from("song_comments")
       .select(`id, content, created_at, user_id, profiles(display_name, avatar_url)`)
-      .eq("song_id", id)
+      .eq("song_id", song.supabase_id)
       .order("created_at", { ascending: true })
       .then(async ({ data: comments, error }) => {
         if (error) {
@@ -103,15 +140,37 @@ export default function SongPage() {
         setComments(formatted);
         setCommentsLoading(false);
       });
-  }, [id]);
+  }, [song, user]);
 
   const handlePostComment = async (e) => {
     e.preventDefault();
-    if (!newComment.trim() || !user) return;
+    if (!newComment.trim() || !user || !song) return;
+    const trimmed = newComment.trim();
+    if (trimmed.length > 1000) {
+      setCommentError("Comment cannot exceed 1000 characters.");
+      return;
+    }
+    setCommentError(null);
+    let currentSong = song;
+    if (!currentSong.supabase_id) {
+      try {
+        const saved = await saveSong(currentSong);
+        if (saved && saved.supabase_id) {
+          currentSong = saved;
+          setSong(saved);
+        } else {
+          setCommentError("Could not save song to cloud database before commenting.");
+          return;
+        }
+      } catch (err) {
+        setCommentError("Could not save song to cloud database before commenting.");
+        return;
+      }
+    }
     try {
       const { data, error } = await supabase
         .from("song_comments")
-        .insert({ song_id: id, user_id: user.id, content: newComment.trim() })
+        .insert({ song_id: currentSong.supabase_id, user_id: user.id, content: trimmed })
         .select()
         .single();
       if (error) throw error;
@@ -136,12 +195,13 @@ export default function SongPage() {
       setNewComment("");
     } catch (err) {
       console.error(err);
-      alert(err.message);
+      setCommentError(err.message);
     }
   };
 
   const handleDeleteComment = async (commentId) => {
     if (!confirm("Are you sure you want to delete this comment?")) return;
+    setCommentError(null);
     try {
       const { error } = await supabase
         .from("song_comments")
@@ -152,7 +212,7 @@ export default function SongPage() {
       setComments((prev) => prev.filter((c) => c.id !== commentId));
     } catch (err) {
       console.error(err);
-      alert(err.message);
+      setCommentError(err.message);
     }
   };
 
@@ -212,12 +272,12 @@ export default function SongPage() {
   };
 
   const navigateToTab = (tabName) => {
-    router.push(`/?tab=${tabName}`);
+    router.push(`/app?tab=${tabName}`);
   };
 
   const handleClose = () => {
     if (router.query.from) {
-      router.push(`/?tab=${router.query.from}`);
+      router.push(`/app?tab=${router.query.from}`);
     } else {
       router.back();
     }
@@ -373,6 +433,9 @@ export default function SongPage() {
             handleDeleteComment={handleDeleteComment}
             handleLikeComment={handleLikeComment}
             recommendations={recommendations}
+            isLiked={isLikedBySelf}
+            onLike={handleLikeSong}
+            commentError={commentError}
           />
         </div>
       </main>

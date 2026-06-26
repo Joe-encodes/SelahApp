@@ -149,7 +149,7 @@ export default function AuthorizePage() {
                 <p className="text-sm text-gray-400 leading-relaxed max-w-md mx-auto">{error}</p>
               </div>
               <button
-                onClick={() => router.push("/")}
+                onClick={() => router.push("/app")}
                 className="px-6 py-2.5 rounded-2xl bg-suno-gray-800 hover:bg-suno-gray-750 text-white font-bold text-xs transition-all active:scale-95 border border-suno-gray-700"
               >
                 Go to Dashboard

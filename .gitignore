@@ -40,3 +40,4 @@ backend/test_output/
 test_output/
 /public/stems/
 /pics
+/.agents

@@ -73,6 +73,9 @@ export const Player = ({
   handleDeleteComment,
   handleLikeComment,
   recommendations,
+  isLiked,
+  onLike,
+  commentError,
 }) => {
   const {
     isPlaying, currentChordIdx, bpm, setBpm, play, pause, stop,
@@ -730,11 +733,20 @@ export const Player = ({
                 </div>
                 <button
                   id="simple-view-like-btn"
-                  onClick={handleShare}
-                  className="p-3 bg-suno-gray-800 hover:bg-red-500/20 rounded-full active:scale-95 transition-all text-gray-400 hover:text-red-400 border border-suno-gray-700 hover:border-red-500/30"
-                  title="Like &amp; Share this song"
+                  onClick={onLike}
+                  className={`p-3 rounded-full active:scale-95 transition-all border ${
+                    isLiked
+                      ? "bg-red-500/10 hover:bg-red-500/20 text-red-500 border-red-500/40"
+                      : "bg-suno-gray-800 hover:bg-red-500/20 text-gray-400 hover:text-red-400 border border-suno-gray-700 hover:border-red-500/30"
+                  }`}
+                  title={isLiked ? "Unlike this song" : "Like this song"}
                 >
-                  <span className="material-symbols-outlined text-xl">favorite</span>
+                  <span
+                    className="material-symbols-outlined text-xl"
+                    style={{ fontVariationSettings: isLiked ? "'FILL' 1" : "'FILL' 0" }}
+                  >
+                    favorite
+                  </span>
                 </button>
               </div>
             </div>
@@ -1366,6 +1378,13 @@ export const Player = ({
                   {comments ? comments.length : 0}
                 </span>
               </div>
+
+              {commentError && (
+                <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-xs font-bold text-red-400 flex items-center gap-2">
+                  <span className="material-symbols-outlined text-sm">error</span>
+                  <span>{commentError}</span>
+                </div>
+              )}
 
               {/* Comment List */}
               {commentsLoading ? (
