@@ -118,9 +118,7 @@ export default function SelahApp() {
     setSongsLoaded(false);
 
     const loadAndSync = async () => {
-      if (user) {
-        await syncLocalSongsToCloud().catch(console.error);
-      }
+      // 1. Load songs immediately so the page is instant
       getAllSongs().then((dbSongs) => {
         if (dbSongs && dbSongs.length > 0) {
           setSongs((prev) => {
@@ -133,6 +131,22 @@ export default function SelahApp() {
         }
         setSongsLoaded(true);
       }).catch(() => setSongsLoaded(true));
+
+      // 2. Perform synchronization in the background
+      if (user) {
+        syncLocalSongsToCloud()
+          .then(() => getAllSongs())
+          .then((dbSongs) => {
+            if (dbSongs && dbSongs.length > 0) {
+              setSongs((prev) => {
+                const existingIds = new Set(prev.map((s) => s.id));
+                const unique = dbSongs.filter((s) => !existingIds.has(s.id));
+                return [...unique, ...prev];
+              });
+            }
+          })
+          .catch(console.error);
+      }
     };
 
     loadAndSync();

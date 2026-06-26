@@ -214,3 +214,8 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 GRANT ALL PRIVILEGES ON TABLE song_comments TO anon, authenticated, service_role;
 GRANT ALL PRIVILEGES ON TABLE comment_reactions TO anon, authenticated, service_role;
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
+
+-- 12. Query Performance Indexes
+CREATE INDEX IF NOT EXISTS idx_songs_user_id ON songs(user_id);
+CREATE INDEX IF NOT EXISTS idx_song_likes_song_id ON song_likes(song_id);
+CREATE INDEX IF NOT EXISTS idx_song_comments_song_id ON song_comments(song_id);
