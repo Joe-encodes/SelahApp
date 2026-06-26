@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { StemRow } from "./StemRow";
 import { AuthRequiredModal } from "./AuthRequiredModal";
+import { supabase } from "../lib/supabase";
 
 const validateChords = (text) => {
   const errors = [];
@@ -291,6 +292,16 @@ export const Player = ({
         }),
       });
 
+      if (res.status === 401) {
+        clearInterval(timer);
+        setIsGeneratingStems(false);
+        setGenerationStage("");
+        alert("Your session has expired. Redirecting to sign in page...");
+        await supabase.auth.signOut();
+        router.push("/auth");
+        return;
+      }
+
       const data = await res.json();
 
       if (!res.ok || data.error) {
@@ -385,6 +396,12 @@ export const Player = ({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ input_audio: base64DataUri, genre: song.genre || "Contemporary", bpm }),
       });
+      if (res.status === 401) {
+        alert("Your session has expired. Redirecting to sign in page...");
+        await supabase.auth.signOut();
+        router.push("/auth");
+        return;
+      }
       const data = await res.json();
       if (!res.ok || data.error) {
         if (data.error === "no_replicate_token") {
@@ -482,6 +499,13 @@ export const Player = ({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ songId: song.id }),
       });
+
+      if (res.status === 401) {
+        alert("Your session has expired. Redirecting to sign in page...");
+        await supabase.auth.signOut();
+        router.push("/auth");
+        return;
+      }
 
       if (!res.ok) {
         const errorData = await res.json();
