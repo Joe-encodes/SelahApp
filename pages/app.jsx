@@ -23,7 +23,7 @@ export default function SelahApp() {
 
   const [songs, setSongs] = useState(MOCK_SONGS);
   const [songsLoaded, setSongsLoaded] = useState(false);
-  const { activeSong, setActiveSong, audioState } = useAudioContext();
+  const { activeSong, setActiveSong, audioState, setPlayQueue, setPlaySource, handleNext, handlePrev } = useAudioContext();
   const [generating, setGenerating] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -232,11 +232,65 @@ export default function SelahApp() {
 
   const handleSongSelect = (song) => {
     stop();
+    let sourceQueue = [];
+    let sourceName = "";
+    if (activeTab === "home") {
+      sourceQueue = filteredSongs;
+      sourceName = "Discover";
+    } else if (activeTab === "library") {
+      sourceQueue = songs.filter((s) => {
+        if (s.created_at && (Date.now() - s.created_at) > 48 * 60 * 60 * 1000) return false;
+        if (s.is_public) return true;
+        if (user && String(s.user_id) === String(user.id)) return true;
+        return false;
+      });
+      sourceName = "Library";
+    } else if (activeTab === "rehearse") {
+      sourceQueue = songs;
+      sourceName = "Rehearsal Room";
+    } else if (activeTab === "community") {
+      sourceName = "Community Feed";
+    }
+
+    if (sourceQueue.length > 0) {
+      setPlayQueue(sourceQueue);
+    }
+    if (sourceName) {
+      setPlaySource(sourceName);
+    }
+
     setActiveSong(song);
     router.push(`/song/${song.id}?from=${activeTab}`);
   };
 
   const handleQuickPlay = (song) => {
+    let sourceQueue = [];
+    let sourceName = "";
+    if (activeTab === "home") {
+      sourceQueue = filteredSongs;
+      sourceName = "Discover";
+    } else if (activeTab === "library") {
+      sourceQueue = songs.filter((s) => {
+        if (s.created_at && (Date.now() - s.created_at) > 48 * 60 * 60 * 1000) return false;
+        if (s.is_public) return true;
+        if (user && String(s.user_id) === String(user.id)) return true;
+        return false;
+      });
+      sourceName = "Library";
+    } else if (activeTab === "rehearse") {
+      sourceQueue = songs;
+      sourceName = "Rehearsal Room";
+    } else if (activeTab === "community") {
+      sourceName = "Community Feed";
+    }
+
+    if (sourceQueue.length > 0) {
+      setPlayQueue(sourceQueue);
+    }
+    if (sourceName) {
+      setPlaySource(sourceName);
+    }
+
     if (activeSong?.id === song.id) {
       isPlaying ? pause() : play();
       return;
@@ -388,7 +442,7 @@ export default function SelahApp() {
               <div className="relative w-96">
                 <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-gray-550">search</span>
                 <input
-                  className="selah-input pl-12 pr-6 py-2 text-sm"
+                  className="selah-input !pl-12 pr-6 py-2 text-sm"
                   placeholder="Search songs, themes, scriptures..."
                   type="text"
                   value={searchQuery}
@@ -416,6 +470,7 @@ export default function SelahApp() {
               onQuickPlay={handleQuickPlay}
               onCreateFirst={() => goToTab("create")}
               activeSongId={activeSong?.id}
+              isPlaying={isPlaying}
               profile={profile}
               user={user}
               selectedGenre={selectedGenre}
@@ -432,6 +487,7 @@ export default function SelahApp() {
               onPlay={handleSongSelect}
               onQuickPlay={handleQuickPlay}
               activeSongId={activeSong?.id}
+              isPlaying={isPlaying}
               user={user}
               profile={profile}
             />
@@ -448,21 +504,23 @@ export default function SelahApp() {
                 <p className="text-xs text-gray-500 leading-relaxed">AI-powered gospel music co-writer for choirs, worship leaders, and composers.</p>
               </div>
               <div>
-                <h3 className="text-xs font-extrabold text-gray-300 uppercase tracking-widest mb-3">App</h3>
+                <h3 className="text-xs font-extrabold text-gray-300 uppercase tracking-widest mb-3">Explore</h3>
                 <ul className="space-y-2">
-                  {NAV_ITEMS.map(({ id, label }) => (
+                  {NAV_ITEMS.slice(0, 2).map(({ id, label }) => (
                     <li key={id}>
-                      <button onClick={() => goToTab(id)} className="text-xs text-gray-500 hover:text-white transition-colors">{label}</button>
+                      <button onClick={() => goToTab(id)} className="text-xs text-gray-500 hover:text-white transition-colors cursor-pointer">{label}</button>
                     </li>
                   ))}
                 </ul>
               </div>
               <div>
-                <h3 className="text-xs font-extrabold text-gray-300 uppercase tracking-widest mb-3">Community</h3>
-                <ul className="space-y-2 text-xs text-gray-500">
-                  <li><a href="#" className="hover:text-white transition-colors">Instagram</a></li>
-                  <li><a href="#" className="hover:text-white transition-colors">YouTube</a></li>
-                  <li><a href="#" className="hover:text-white transition-colors">Twitter / X</a></li>
+                <h3 className="text-xs font-extrabold text-gray-300 uppercase tracking-widest mb-3">Rehearse</h3>
+                <ul className="space-y-2">
+                  {NAV_ITEMS.slice(2, 4).map(({ id, label }) => (
+                    <li key={id}>
+                      <button onClick={() => goToTab(id)} className="text-xs text-gray-500 hover:text-white transition-colors cursor-pointer">{label}</button>
+                    </li>
+                  ))}
                 </ul>
               </div>
               <div>
@@ -502,18 +560,21 @@ export default function SelahApp() {
 
           <div className="flex-1 flex flex-col items-center min-w-0 px-3 md:px-4">
             <div className="flex items-center gap-4">
-              <button onClick={stop} className="text-gray-400 hover:text-white transition-colors" title="Stop">
-                <span className="material-symbols-outlined text-xl">stop</span>
+              <button onClick={handlePrev} className="text-gray-400 hover:text-white transition-colors cursor-pointer" title="Previous Song">
+                <span className="material-symbols-outlined text-xl">skip_previous</span>
               </button>
               <button
                 id="mini-player-play-btn"
                 onClick={() => (isPlaying ? pause() : play())}
-                className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-lg"
+                className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-lg cursor-pointer"
                 title={isPlaying ? "Pause" : "Play"}
               >
                 <span className="material-symbols-outlined text-[22px]" style={{ fontVariationSettings: "'FILL' 1" }}>
                   {isPlaying ? "pause" : "play_arrow"}
                 </span>
+              </button>
+              <button onClick={handleNext} className="text-gray-400 hover:text-white transition-colors cursor-pointer" title="Next Song">
+                <span className="material-symbols-outlined text-xl">skip_next</span>
               </button>
             </div>
           </div>

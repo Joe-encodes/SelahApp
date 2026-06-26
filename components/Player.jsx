@@ -74,8 +74,12 @@ export const Player = ({
   handleLikeComment,
   recommendations,
   isLiked,
+  likeCount,
   onLike,
   commentError,
+  playSource,
+  onNext,
+  onPrev,
 }) => {
   const {
     isPlaying, currentChordIdx, bpm, setBpm, play, pause, stop,
@@ -611,10 +615,25 @@ export const Player = ({
                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
-                  <div className="absolute bottom-4 left-4 right-4">
-                    <h3 className="font-display text-xl font-bold text-white leading-tight line-clamp-2">{song.title}</h3>
-                    <p className="selah-body mt-0.5">by {song.creator_name || user?.user_metadata?.full_name || "Selah Choir"}</p>
-                    <p className="selah-meta mt-0.5">Key of {song.musicKey || chords[0]} · {song.lang}</p>
+                  <div className="absolute bottom-4 left-4 right-4 flex items-end justify-between z-10">
+                    <div>
+                      <h3 className="font-display text-xl font-bold text-white leading-tight line-clamp-2">{song.title}</h3>
+                      <p className="selah-body mt-0.5">by {song.creator_name || user?.user_metadata?.full_name || "Selah Choir"}</p>
+                      <p className="selah-meta mt-0.5">Key of {song.musicKey || chords[0]} · {song.lang}</p>
+                    </div>
+                    {onLike && (
+                      <button
+                        id="player-cover-like-btn"
+                        onClick={(e) => { e.stopPropagation(); onLike(); }}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full backdrop-blur-md transition-all active:scale-95 cursor-pointer ${
+                          isLiked ? "bg-red-500/20 text-red-500 border border-red-500/35" : "bg-black/40 text-gray-300 border border-gray-700/35 hover:text-white"
+                        }`}
+                        title={isLiked ? "Unlike Song" : "Like Song"}
+                      >
+                        <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: `'FILL' ${isLiked ? 1 : 0}` }}>favorite</span>
+                        <span className="text-xs font-bold">{likeCount || 0}</span>
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -659,7 +678,7 @@ export const Player = ({
                 <div className="absolute -right-24 -top-24 w-64 h-64 bg-suno-accent/5 blur-[100px] rounded-full group-hover:bg-suno-accent/10 transition-all duration-700"></div>
 
                 <div className="flex items-center justify-between border-b border-suno-gray-800 pb-4 z-10">
-                  <span className="selah-body-bold text-suno-accent">Lyrics</span>
+                  <span className="selah-body-bold text-suno-accent">Lyrics {playSource && `• Playing from ${playSource}`}</span>
                   <div className="flex items-center gap-2 bg-suno-gray-800 px-3 py-1 rounded-full border border-suno-gray-700">
                     <span className={`w-2.5 h-2.5 rounded-full ${isPlaying ? "bg-emerald-500 animate-pulse" : "bg-gray-655"}`}></span>
                     <span className="selah-meta">{isPlaying ? "Active Playback" : "Idle"}</span>
@@ -704,12 +723,18 @@ export const Player = ({
               {/* Playback Controls */}
               <div className="selah-panel p-6 flex flex-col md:flex-row items-center gap-6 justify-between animate-fadeIn">
                 <div className="flex items-center gap-4">
-                  <button onClick={handleStop} className="p-4 bg-suno-gray-800 hover:bg-suno-gray-700 rounded-2xl active:scale-95 transition-all text-gray-400 hover:text-white" title="Stop Playback">
+                  <button onClick={handleStop} className="p-4 bg-suno-gray-800 hover:bg-suno-gray-700 rounded-2xl active:scale-95 transition-all text-gray-400 hover:text-white shrink-0" title="Stop Playback">
                     <span className="material-symbols-outlined">stop</span>
                   </button>
+                  {onPrev && (
+                    <button onClick={onPrev} className="p-4 bg-suno-gray-800 hover:bg-suno-gray-700 rounded-2xl active:scale-95 transition-all text-gray-400 hover:text-white shrink-0" title="Previous Song">
+                      <span className="material-symbols-outlined">skip_previous</span>
+                    </button>
+                  )}
                   <button
-                    onClick={handlePlayPause}
-                    className={`w-16 h-16 rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-xl ${
+                    id="choir-desk-play-btn"
+                    onClick={() => (isPlaying ? pause() : play())}
+                    className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all cursor-pointer shrink-0 ${
                       isPlaying ? "bg-gradient-to-r from-red-500 to-rose-600 text-white shadow-red-500/20" : "bg-suno-accent text-white shadow-suno-accent/20"
                     }`}
                   >
@@ -717,6 +742,11 @@ export const Player = ({
                       {isPlaying ? "pause" : "play_arrow"}
                     </span>
                   </button>
+                  {onNext && (
+                    <button onClick={onNext} className="p-4 bg-suno-gray-800 hover:bg-suno-gray-700 rounded-2xl active:scale-95 transition-all text-gray-400 hover:text-white shrink-0" title="Next Song">
+                      <span className="material-symbols-outlined">skip_next</span>
+                    </button>
+                  )}
                   <div className="text-left ml-2">
                     <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Playback</p>
                     <p className="text-sm text-white font-bold">{isPlaying ? "Rehearsal Live" : "Stopped"}</p>
@@ -734,7 +764,7 @@ export const Player = ({
                 <button
                   id="simple-view-like-btn"
                   onClick={onLike}
-                  className={`p-3 rounded-full active:scale-95 transition-all border ${
+                  className={`px-4 py-3 rounded-full active:scale-95 transition-all border flex items-center gap-1.5 ${
                     isLiked
                       ? "bg-red-500/10 hover:bg-red-500/20 text-red-500 border-red-500/40"
                       : "bg-suno-gray-800 hover:bg-red-500/20 text-gray-400 hover:text-red-400 border border-suno-gray-700 hover:border-red-500/30"
@@ -747,6 +777,7 @@ export const Player = ({
                   >
                     favorite
                   </span>
+                  <span className="text-xs font-bold">{likeCount || 0}</span>
                 </button>
               </div>
             </div>

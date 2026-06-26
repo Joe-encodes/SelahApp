@@ -21,8 +21,40 @@ export default function AuthPage() {
 
     try {
       if (authMode === "signup") {
-        const { data, error: signUpError } = await supabase.auth.signUp({ email, password });
-        if (signUpError) throw signUpError;
+        let signUpError;
+        let data;
+        try {
+          const res = await supabase.auth.signUp({ email, password });
+          data = res.data;
+          signUpError = res.error;
+        } catch (e) {
+          signUpError = e;
+        }
+
+        if (signUpError) {
+          const isAlreadyRegistered = signUpError.message?.toLowerCase().includes("already registered") || 
+                                     signUpError.message?.toLowerCase().includes("already exists");
+          if (isAlreadyRegistered) {
+            const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+            if (signInError) throw signInError;
+            let dest = "/app";
+            if (typeof window !== "undefined") {
+              const params = new URLSearchParams(window.location.search);
+              const nextParam = params.get("next");
+              if (nextParam) {
+                const { isSafeRedirect } = require("../lib/security");
+                if (isSafeRedirect(nextParam)) {
+                  dest = nextParam;
+                }
+              }
+            }
+            router.push(dest);
+            return;
+          } else {
+            throw signUpError;
+          }
+        }
+
         if (data?.session) {
           router.push("/app");
         } else {

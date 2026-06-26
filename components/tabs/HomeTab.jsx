@@ -41,7 +41,7 @@ const SongCardSkeleton = () => (
   </div>
 );
 
-export const HomeTab = ({ songs, songsLoaded, onPlay, onQuickPlay, onCreateFirst, activeSongId, profile, user, selectedGenre, onSelectGenre, isFiltered }) => {
+export const HomeTab = ({ songs, songsLoaded, onPlay, onQuickPlay, onCreateFirst, activeSongId, isPlaying, profile, user, selectedGenre, onSelectGenre, isFiltered }) => {
   const [featuredIdx, setFeaturedIdx] = useState(0);
 
   // Public community songs with real likes
@@ -296,7 +296,7 @@ export const HomeTab = ({ songs, songsLoaded, onPlay, onQuickPlay, onCreateFirst
                         title="Play"
                       >
                         <span className="material-symbols-outlined text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>
-                          {isActive ? "pause" : "play_arrow"}
+                          {isActive && isPlaying ? "pause" : "play_arrow"}
                         </span>
                       </button>
                     </div>

@@ -54,7 +54,7 @@ export const RehearseTab = ({ songs = [], onPlay, onSelectClassic }) => {
             value={filterQuery}
             onChange={(e) => setFilterQuery(e.target.value)}
             placeholder="Search classics..."
-            className="selah-input pl-10 py-2"
+            className="selah-input !pl-10 py-2"
           />
         </div>
       </div>

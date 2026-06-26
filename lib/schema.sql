@@ -150,11 +150,24 @@ CREATE POLICY "Users can toggle their own reactions" ON comment_reactions
 -- 9. Trigger for Auto-Creating Profiles on Signup
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
+DECLARE
+  v_display_name text;
+  v_base_name text;
+  v_counter int := 1;
 BEGIN
+  v_base_name := coalesce(new.raw_user_meta_data->>'full_name', split_part(new.email, '@', 1));
+  v_display_name := v_base_name;
+  
+  -- Loop to find a unique display name if it already exists
+  WHILE EXISTS (SELECT 1 FROM public.profiles WHERE lower(display_name) = lower(v_display_name)) LOOP
+    v_counter := v_counter + 1;
+    v_display_name := v_base_name || v_counter::text;
+  END LOOP;
+
   INSERT INTO public.profiles (id, display_name, avatar_url, credits)
   VALUES (
     new.id,
-    coalesce(new.raw_user_meta_data->>'full_name', split_part(new.email, '@', 1)),
+    v_display_name,
     new.raw_user_meta_data->>'avatar_url',
     3
   );

@@ -63,11 +63,13 @@ export default function SongPage() {
   const [newComment, setNewComment] = useState("");
   const [commentError, setCommentError] = useState(null);
   const [isLikedBySelf, setIsLikedBySelf] = useState(false);
+  const [likeCount, setLikeCount] = useState(0);
 
   useEffect(() => {
     if (song && song.supabase_id) {
       getLikesForSong(song.supabase_id).then((res) => {
         setIsLikedBySelf(res.userLiked);
+        setLikeCount(res.count);
       });
     }
   }, [song, user]);
@@ -97,6 +99,7 @@ export default function SongPage() {
     if (currentSong.supabase_id) {
       const liked = await toggleLike(currentSong.supabase_id);
       setIsLikedBySelf(liked);
+      setLikeCount((prev) => (liked ? prev + 1 : Math.max(0, prev - 1)));
     }
   };
 
@@ -254,13 +257,30 @@ export default function SongPage() {
     }
   };
 
-  const { activeSong, setActiveSong, audioState } = useAudioContext();
+  const {
+    activeSong,
+    setActiveSong,
+    audioState,
+    playQueue,
+    setPlayQueue,
+    playSource,
+    setPlaySource,
+    handleNext,
+    handlePrev,
+  } = useAudioContext();
 
   useEffect(() => {
     if (song) {
       setActiveSong(song);
     }
   }, [song, setActiveSong]);
+
+  useEffect(() => {
+    if (recommendations && recommendations.length > 0 && playQueue.length === 0) {
+      setPlayQueue([song, ...recommendations]);
+      setPlaySource("Recommendations");
+    }
+  }, [recommendations, song, playQueue.length, setPlayQueue, setPlaySource]);
 
   const handleUpdateSong = async (updatedSong) => {
     setSong(updatedSong);
@@ -434,8 +454,12 @@ export default function SongPage() {
             handleLikeComment={handleLikeComment}
             recommendations={recommendations}
             isLiked={isLikedBySelf}
+            likeCount={likeCount}
             onLike={handleLikeSong}
             commentError={commentError}
+            playSource={playSource}
+            onNext={handleNext}
+            onPrev={handlePrev}
           />
         </div>
       </main>

@@ -12,7 +12,7 @@ const getSongCover = (song) => {
   return COVER_FALLBACKS[String(song.title).charCodeAt(0) % COVER_FALLBACKS.length];
 };
 
-export const LibraryTab = ({ songs, songsLoaded, onPlay, onQuickPlay, activeSongId, user, profile }) => {
+export const LibraryTab = ({ songs, songsLoaded, onPlay, onQuickPlay, activeSongId, isPlaying, user, profile }) => {
   const [likedSongs, setLikedSongs] = useState({});
 
   const toggleLike = (e, id) => {
@@ -91,7 +91,7 @@ export const LibraryTab = ({ songs, songsLoaded, onPlay, onQuickPlay, activeSong
                       title="Play"
                     >
                       <span className="material-symbols-outlined text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>
-                        {isActive ? "pause" : "play_arrow"}
+                        {isActive && isPlaying ? "pause" : "play_arrow"}
                       </span>
                     </button>
                   </div>
