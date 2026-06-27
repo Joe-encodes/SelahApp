@@ -1,4 +1,4 @@
-import { createPagesServerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseClient } from "../../lib/supabaseServer";
 import { z } from "zod";
 import { buildStylePrompt } from "../../lib/prompts/buildStylePrompt";
 import { submitSong, pollSong } from "../../lib/apiframe";
@@ -78,16 +78,14 @@ export default async function handler(req, res) {
   }
 
   // 1. Verify Authentication
-  const supabase = createPagesServerClient({ req, res });
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+  const supabase = createServerSupabaseClient({ req });
+  const { data: { user: sessionUser } } = await supabase.auth.getUser();
 
-  if (!session) {
+  if (!sessionUser) {
     return res.status(401).json({ error: "Unauthorized", message: "Please sign in to continue." });
   }
 
-  const userId = session.user.id;
+  const userId = sessionUser.id;
 
   // 2. Validate Inputs
   const validation = StemsSchema.safeParse(req.body);

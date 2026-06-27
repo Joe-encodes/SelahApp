@@ -466,6 +466,7 @@ export default function SongPage() {
             onClose={handleClose} 
             onUpdateSong={handleUpdateSong}
             user={user}
+            profile={profile}
             comments={comments}
             commentsLoading={commentsLoading}
             newComment={newComment}

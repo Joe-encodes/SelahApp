@@ -1,17 +1,36 @@
 -- ============================================================
--- SelahApp — Supabase Database Schema
+-- SelahApp — Supabase Database Schema (Master Migration Script)
 -- Run this once in the Supabase SQL Editor for your project.
 -- Go to: https://supabase.com → Your Project → SQL Editor → New Query
+-- Note: This script is fully idempotent and safe to run multiple times.
+-- It preserves all data while strictly enforcing the latest schema and relations.
 -- ============================================================
 
 -- 1. Clean up legacy or incorrect table schemas safely
 DROP TABLE IF EXISTS comment_likes CASCADE;
 DROP TABLE IF EXISTS public.comment_likes CASCADE;
 
--- 2. Songs table
+-- 2. User profiles (Must be created first as other tables reference it)
+CREATE TABLE IF NOT EXISTS profiles (
+  id          uuid REFERENCES auth.users PRIMARY KEY,
+  display_name text,
+  avatar_url  text,
+  credits     int DEFAULT 3,
+  credits_reset_at timestamptz,
+  created_at  timestamptz DEFAULT now()
+);
+
+-- Ensure profiles columns compatibility if profiles existed early
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS credits INT DEFAULT 3;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS credits_reset_at TIMESTAMPTZ;
+
+-- Ensure case-insensitive unique display names
+CREATE UNIQUE INDEX IF NOT EXISTS unique_profile_display_name ON profiles (LOWER(display_name));
+
+-- 3. Songs table
 CREATE TABLE IF NOT EXISTS songs (
   id              bigserial PRIMARY KEY,
-  user_id         uuid REFERENCES auth.users NOT NULL,
+  user_id         uuid REFERENCES public.profiles(id) NOT NULL,
   title           text NOT NULL,
   genre           text,
   music_key       text,
@@ -30,37 +49,20 @@ CREATE TABLE IF NOT EXISTS songs (
   created_at      timestamptz DEFAULT now()
 );
 
--- 3. Song likes table
+-- 4. Song likes table
 CREATE TABLE IF NOT EXISTS song_likes (
   id          bigserial PRIMARY KEY,
-  user_id     uuid REFERENCES auth.users NOT NULL,
+  user_id     uuid REFERENCES public.profiles(id) NOT NULL,
   song_id     bigint REFERENCES songs ON DELETE CASCADE NOT NULL,
   created_at  timestamptz DEFAULT now(),
   UNIQUE(user_id, song_id)
 );
 
--- 4. User profiles
-CREATE TABLE IF NOT EXISTS profiles (
-  id          uuid REFERENCES auth.users PRIMARY KEY,
-  display_name text,
-  avatar_url  text,
-  credits     int DEFAULT 3,
-  credits_reset_at timestamptz,
-  created_at  timestamptz DEFAULT now()
-);
-
--- Ensure profiles columns compatibility if profiles existed early
-ALTER TABLE profiles ADD COLUMN IF NOT EXISTS credits INT DEFAULT 3;
-ALTER TABLE profiles ADD COLUMN IF NOT EXISTS credits_reset_at TIMESTAMPTZ;
-
--- Ensure case-insensitive unique display names
-CREATE UNIQUE INDEX IF NOT EXISTS unique_profile_display_name ON profiles (LOWER(display_name));
-
 -- 5. Song comments table
 CREATE TABLE IF NOT EXISTS song_comments (
   id          bigserial PRIMARY KEY,
   song_id     bigint REFERENCES songs ON DELETE CASCADE NOT NULL,
-  user_id     uuid REFERENCES auth.users NOT NULL,
+  user_id     uuid REFERENCES public.profiles(id) NOT NULL,
   content     text NOT NULL,
   created_at  timestamptz DEFAULT now()
 );
@@ -69,85 +71,88 @@ CREATE TABLE IF NOT EXISTS song_comments (
 CREATE TABLE IF NOT EXISTS comment_reactions (
   id          bigserial PRIMARY KEY,
   comment_id  bigint REFERENCES song_comments ON DELETE CASCADE NOT NULL,
-  user_id     uuid REFERENCES auth.users NOT NULL,
+  user_id     uuid REFERENCES public.profiles(id) NOT NULL,
   created_at  timestamptz DEFAULT now(),
   UNIQUE(user_id, comment_id)
 );
 
--- 7. Enable Row Level Security (RLS)
+-- 7. Dynamically Fix Foreign Keys for Existing Databases
+-- If the tables already existed, their user_id columns might still point to auth.users.
+-- This block safely drops old foreign keys and recreates them to point to public.profiles.
+DO $$
+DECLARE
+    row record;
+BEGIN
+    -- Drop any existing foreign key constraints on user_id for our tables
+    FOR row IN
+        SELECT tc.constraint_name, tc.table_name
+        FROM information_schema.table_constraints AS tc
+        JOIN information_schema.key_column_usage AS kcu
+          ON tc.constraint_name = kcu.constraint_name
+          AND tc.table_schema = kcu.table_schema
+        WHERE tc.constraint_type = 'FOREIGN KEY'
+          AND tc.table_schema = 'public'
+          AND tc.table_name IN ('songs', 'song_likes', 'song_comments', 'comment_reactions')
+          AND kcu.column_name = 'user_id'
+    LOOP
+        EXECUTE 'ALTER TABLE public.' || quote_ident(row.table_name) || ' DROP CONSTRAINT ' || quote_ident(row.constraint_name);
+    END LOOP;
+END;
+$$;
+
+-- Re-add the correct foreign keys to public.profiles
+ALTER TABLE songs ADD CONSTRAINT songs_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id);
+ALTER TABLE song_comments ADD CONSTRAINT song_comments_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id);
+ALTER TABLE song_likes ADD CONSTRAINT song_likes_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id);
+ALTER TABLE comment_reactions ADD CONSTRAINT comment_reactions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id);
+
+-- 8. Enable Row Level Security (RLS)
 ALTER TABLE songs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE song_likes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE song_comments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE comment_reactions ENABLE ROW LEVEL SECURITY;
 
--- 8. Row Level Security Policies
+-- 9. Row Level Security Policies
+
+-- Policies for profiles
+DROP POLICY IF EXISTS "Users can insert their own profile" ON profiles;
+DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
+DROP POLICY IF EXISTS "Profiles are viewable by everyone" ON profiles;
+CREATE POLICY "Users can insert their own profile" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
+CREATE POLICY "Users can update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
+CREATE POLICY "Profiles are viewable by everyone" ON profiles FOR SELECT USING (true);
+
 -- Policies for songs
 DROP POLICY IF EXISTS "Users can manage their own songs" ON songs;
-DROP POLICY IF EXISTS "Users can manage their own songs" ON public.songs;
-CREATE POLICY "Users can manage their own songs" ON songs
-  FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Users can manage their own songs" ON songs FOR ALL USING (auth.uid() = user_id);
 
 DROP POLICY IF EXISTS "Public songs are readable by anyone" ON songs;
-DROP POLICY IF EXISTS "Public songs are readable by anyone" ON public.songs;
-CREATE POLICY "Public songs are readable by anyone" ON songs
-  FOR SELECT USING (is_public = true);
+CREATE POLICY "Public songs are readable by anyone" ON songs FOR SELECT USING (is_public = true);
 
 -- Policies for song_likes
 DROP POLICY IF EXISTS "Users manage their own likes" ON song_likes;
-DROP POLICY IF EXISTS "Users manage their own likes" ON public.song_likes;
-CREATE POLICY "Users manage their own likes" ON song_likes
-  FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Users manage their own likes" ON song_likes FOR ALL USING (auth.uid() = user_id);
 
-DROP POLICY IF EXISTS "Like counts are readable by anyone" ON song_likes;
-DROP POLICY IF EXISTS "Like counts are readable by anyone" ON public.song_likes;
-CREATE POLICY "Like counts are readable by anyone" ON song_likes
-  FOR SELECT USING (true);
-
--- Policies for profiles
-DROP POLICY IF EXISTS "Users can read all profiles" ON profiles;
-DROP POLICY IF EXISTS "Users can read all profiles" ON public.profiles;
-CREATE POLICY "Users can read all profiles" ON profiles
-  FOR SELECT USING (true);
-
-DROP POLICY IF EXISTS "Users can update their own profile" ON profiles;
-DROP POLICY IF EXISTS "Users can update their own profile" ON public.profiles;
-CREATE POLICY "Users can update their own profile" ON profiles
-  FOR UPDATE USING (auth.uid() = id);
+DROP POLICY IF EXISTS "Anyone can see likes" ON song_likes;
+CREATE POLICY "Anyone can see likes" ON song_likes FOR SELECT USING (true);
 
 -- Policies for song_comments
-DROP POLICY IF EXISTS "Anyone can read comments" ON song_comments;
-DROP POLICY IF EXISTS "Anyone can read comments" ON public.song_comments;
-CREATE POLICY "Anyone can read comments" ON song_comments
-  FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Users can manage their own comments" ON song_comments;
+CREATE POLICY "Users can manage their own comments" ON song_comments FOR ALL USING (auth.uid() = user_id);
 
-DROP POLICY IF EXISTS "Authenticated users can post comments" ON song_comments;
-DROP POLICY IF EXISTS "Authenticated users can post comments" ON public.song_comments;
-CREATE POLICY "Authenticated users can post comments" ON song_comments
-  FOR INSERT WITH CHECK (auth.role() = 'authenticated');
-
-DROP POLICY IF EXISTS "Users can delete their own comments" ON song_comments;
-DROP POLICY IF EXISTS "Users can delete their own comments" ON public.song_comments;
-CREATE POLICY "Users can delete their own comments" ON song_comments
-  FOR DELETE USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Anyone can see comments" ON song_comments;
+CREATE POLICY "Anyone can see comments" ON song_comments FOR SELECT USING (true);
 
 -- Policies for comment_reactions
-DROP POLICY IF EXISTS "Anyone can see reactions" ON comment_reactions;
-DROP POLICY IF EXISTS "Anyone can see reactions" ON public.comment_reactions;
-CREATE POLICY "Anyone can see reactions" ON comment_reactions
-  FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Users manage their own comment reactions" ON comment_reactions;
+CREATE POLICY "Users manage their own comment reactions" ON comment_reactions FOR ALL USING (auth.uid() = user_id);
 
-DROP POLICY IF EXISTS "Authenticated users can react" ON comment_reactions;
-DROP POLICY IF EXISTS "Authenticated users can react" ON public.comment_reactions;
-CREATE POLICY "Authenticated users can react" ON comment_reactions
-  FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+DROP POLICY IF EXISTS "Anyone can see comment reactions" ON comment_reactions;
+CREATE POLICY "Anyone can see comment reactions" ON comment_reactions FOR SELECT USING (true);
 
-DROP POLICY IF EXISTS "Users can toggle their own reactions" ON comment_reactions;
-DROP POLICY IF EXISTS "Users can toggle their own reactions" ON public.comment_reactions;
-CREATE POLICY "Users can toggle their own reactions" ON comment_reactions
-  FOR DELETE USING (auth.uid() = user_id);
 
--- 9. Trigger for Auto-Creating Profiles on Signup
+-- 10. Trigger for Auto-Creating Profiles on Signup
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
 DECLARE
@@ -180,7 +185,7 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
 
--- 10. Thread-safe RPC to Deduct Credits
+-- 11. Thread-safe RPC to Deduct Credits
 CREATE OR REPLACE FUNCTION public.deduct_credits(p_user_id uuid, p_cost int)
 RETURNS json AS $$
 DECLARE
@@ -210,12 +215,15 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- 11. Role Permission Grants
+-- 12. Role Permission Grants
+GRANT ALL PRIVILEGES ON TABLE songs TO anon, authenticated, service_role;
+GRANT ALL PRIVILEGES ON TABLE profiles TO anon, authenticated, service_role;
+GRANT ALL PRIVILEGES ON TABLE song_likes TO anon, authenticated, service_role;
 GRANT ALL PRIVILEGES ON TABLE song_comments TO anon, authenticated, service_role;
 GRANT ALL PRIVILEGES ON TABLE comment_reactions TO anon, authenticated, service_role;
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
 
--- 12. Query Performance Indexes
+-- 13. Query Performance Indexes
 CREATE INDEX IF NOT EXISTS idx_songs_user_id ON songs(user_id);
 CREATE INDEX IF NOT EXISTS idx_song_likes_song_id ON song_likes(song_id);
 CREATE INDEX IF NOT EXISTS idx_song_comments_song_id ON song_comments(song_id);

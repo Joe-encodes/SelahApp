@@ -1,20 +1,18 @@
-import { createPagesServerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseClient } from "../../../lib/supabaseServer";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
     return res.status(405).json({ error: "Method Not Allowed" });
   }
 
-  const supabase = createPagesServerClient({ req, res });
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+  const supabase = createServerSupabaseClient({ req });
+  const { data: { user: sessionUser } } = await supabase.auth.getUser();
 
-  if (!session) {
+  if (!sessionUser) {
     return res.status(401).json({ error: "Unauthorized", message: "Please sign in to continue." });
   }
 
-  const user = session.user;
+  const user = sessionUser;
 
   try {
     const { data, error } = await supabase

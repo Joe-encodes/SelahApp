@@ -288,10 +288,10 @@ export const HomeTab = ({ songs, songsLoaded, onPlay, onQuickPlay, onCreateFirst
                       alt={song.title}
                       className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                     />
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <div className="absolute inset-0 bg-black/20 md:bg-black/40 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none md:pointer-events-auto">
                       <button
                         id={`quick-play-${song.id}`}
-                        className="w-12 h-12 bg-suno-accent rounded-full flex items-center justify-center text-white transform translate-y-4 group-hover:translate-y-0 transition-all duration-300 shadow-xl hover:scale-110 active:scale-95"
+                        className="w-12 h-12 bg-suno-accent rounded-full flex items-center justify-center text-white md:transform md:translate-y-4 group-hover:translate-y-0 transition-all duration-300 shadow-xl hover:scale-110 active:scale-95 pointer-events-auto"
                         onClick={(e) => { e.stopPropagation(); onQuickPlay ? onQuickPlay(song) : onPlay(song); }}
                         title="Play"
                       >
@@ -301,7 +301,7 @@ export const HomeTab = ({ songs, songsLoaded, onPlay, onQuickPlay, onCreateFirst
                       </button>
                     </div>
                     {/* Share + Like overlay */}
-                    <div className="absolute top-2.5 right-2.5 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="absolute top-2.5 right-2.5 flex gap-1.5 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity z-10">
                       <button
                         id={`share-${song.id}`}
                         className="p-2 bg-black/60 backdrop-blur-md rounded-full text-white hover:text-suno-accent transition-colors"
@@ -326,12 +326,12 @@ export const HomeTab = ({ songs, songsLoaded, onPlay, onQuickPlay, onCreateFirst
                       <h3 className="selah-body-bold truncate">{song.title}</h3>
                       <p className="selah-meta mt-1 truncate">by {song.creator_name || "Selah Choir"}</p>
                     </div>
-                    {usingPublicFeed && (
-                      <div className="mt-3 flex items-center gap-1 text-xs text-gray-500 font-bold">
+                    <div className="mt-3 flex items-center justify-between">
+                      <div className="flex items-center gap-1 text-xs text-gray-500 ml-auto font-bold">
                         <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>favorite</span>
-                        <span>{likeCounts[song.id] ?? 0}</span>
+                        <span>{usingPublicFeed ? (likeCounts[song.id] ?? 0) : (song.like_count ?? 0)}</span>
                       </div>
-                    )}
+                    </div>
                   </div>
                 </div>
               );
@@ -343,14 +343,14 @@ export const HomeTab = ({ songs, songsLoaded, onPlay, onQuickPlay, onCreateFirst
       {/* Browse by Genre — bottom */}
       <section className="pb-4">
         <h3 className="selah-title-sm mb-4">Browse by Genre</h3>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-8 gap-3">
+        <div className="flex flex-wrap gap-3">
           {GENRES.map((g) => {
             const isSelected = selectedGenre?.toLowerCase() === g.label.toLowerCase();
             return (
               <div
                 key={g.label}
                 onClick={() => onSelectGenre && onSelectGenre(g.label)}
-                className={`p-3 text-center cursor-pointer rounded-2xl border transition-all duration-200 ${
+                className={`flex-1 min-w-[120px] max-w-[200px] p-3 text-center cursor-pointer rounded-2xl border transition-all duration-200 ${
                   isSelected
                     ? "bg-suno-accent/10 border-suno-accent text-suno-accent"
                     : "bg-suno-gray-900 border-suno-gray-800 hover:border-suno-gray-700 hover:bg-suno-gray-800/60"

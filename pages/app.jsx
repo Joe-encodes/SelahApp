@@ -120,14 +120,8 @@ export default function SelahApp() {
     const loadAndSync = async () => {
       // 1. Load songs immediately so the page is instant
       getAllSongs().then((dbSongs) => {
-        if (dbSongs && dbSongs.length > 0) {
-          setSongs((prev) => {
-            const existingIds = new Set(prev.map((s) => s.id));
-            const unique = dbSongs.filter((s) => !existingIds.has(s.id));
-            return [...unique, ...prev];
-          });
-        } else if (dbSongs && dbSongs.length === 0) {
-          setSongs([]);
+        if (dbSongs) {
+          setSongs(dbSongs);
         }
         setSongsLoaded(true);
       }).catch(() => setSongsLoaded(true));
@@ -137,12 +131,8 @@ export default function SelahApp() {
         syncLocalSongsToCloud()
           .then(() => getAllSongs())
           .then((dbSongs) => {
-            if (dbSongs && dbSongs.length > 0) {
-              setSongs((prev) => {
-                const existingIds = new Set(prev.map((s) => s.id));
-                const unique = dbSongs.filter((s) => !existingIds.has(s.id));
-                return [...unique, ...prev];
-              });
+            if (dbSongs) {
+              setSongs(dbSongs);
             }
           })
           .catch(console.error);
@@ -202,9 +192,14 @@ export default function SelahApp() {
       }
 
       const { theme, musicKey, langs, genre: selectedGenre, harmony, scripture, rawSongText, emotional_mode, instrumentation, vocal_gender } = params;
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
       const res = await fetch("/api/generate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          ...(token ? { "Authorization": `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({ theme, musicKey, langs, genre: selectedGenre, harmony, scripture, rawSongText, emotional_mode, instrumentation, vocal_gender }),
       });
       if (res.status === 401) {
@@ -456,26 +451,50 @@ export default function SelahApp() {
 
         {/* Desktop top bar — search (home only) + offline badge (all tabs) */}
         <header className="h-20 border-b border-suno-gray-800 flex items-center justify-between px-8 bg-suno-black/80 backdrop-blur-md sticky top-0 z-40 hidden md:flex">
-          <div className="flex items-center gap-4">
-            {activeTab === "home" ? (
-              <div className="relative w-96">
-                <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-gray-550">search</span>
-                <input
-                  className="selah-input !pl-12 pr-6 py-2 text-sm"
-                  placeholder="Search songs, themes, scriptures..."
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-              </div>
-            ) : (
-              <h2 className="text-xs font-extrabold text-white uppercase tracking-widest">
-                {NAV_ITEMS.find((item) => item.id === activeTab)?.label}
-              </h2>
-            )}
-            {isOffline && (
-              <span className="text-[10px] font-bold text-amber-400 bg-amber-400/10 border border-amber-400/20 px-3 py-1 rounded-full">Offline Mode</span>
-            )}
+          <div className="flex items-center justify-between w-full">
+            <div className="flex-1 min-w-0 pr-4">
+              {activeTab === "home" && (
+                <div className="relative w-96">
+                  <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-gray-550">search</span>
+                  <input
+                    className="selah-input !pl-12 pr-6 py-2 text-sm"
+                    placeholder="Search songs, themes, scriptures..."
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
+              )}
+              {activeTab === "create" && (
+                <div>
+                  <h2 className="text-xl md:text-2xl font-extrabold text-white font-display leading-tight">Create Studio</h2>
+                  <p className="text-xs md:text-sm text-gray-400 font-semibold mt-0.5">Shape the sound from soul to structure. AI writes the song — you direct the vision.</p>
+                </div>
+              )}
+              {activeTab === "rehearse" && (
+                <div>
+                  <h2 className="text-xl md:text-2xl font-extrabold text-white font-display leading-tight">Rehearsal & Practice Room</h2>
+                  <p className="text-xs md:text-sm text-gray-400 font-semibold mt-0.5">Load Christian classics to rehearse, learn parts, and practice harmonies. No credits used.</p>
+                </div>
+              )}
+              {activeTab === "library" && (
+                <div>
+                  <h2 className="text-xl md:text-2xl font-extrabold text-white font-display leading-tight">Your Library</h2>
+                  <p className="text-xs md:text-sm text-gray-400 font-semibold mt-0.5">Browse and practice your saved gospel arrangements.</p>
+                </div>
+              )}
+              {activeTab === "community" && (
+                <div>
+                  <h2 className="text-xl md:text-2xl font-extrabold text-white font-display leading-tight">Community Feed</h2>
+                  <p className="text-xs md:text-sm text-gray-400 font-semibold mt-0.5">Gospel arrangements shared by the Selah community.</p>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center shrink-0">
+              {isOffline && (
+                <span className="text-[10px] font-bold text-amber-400 bg-amber-400/10 border border-amber-400/20 px-3 py-1 rounded-full">Offline Mode</span>
+              )}
+            </div>
           </div>
         </header>
 
@@ -610,16 +629,16 @@ export default function SelahApp() {
       )}
 
       {/* Mobile bottom nav — always above mini player */}
-      <nav className={`md:hidden fixed ${activeSong ? "bottom-20" : "bottom-0"} left-0 w-full bg-suno-gray-900 border-t border-suno-gray-800 flex justify-around items-center h-16 px-4 pb-safe z-[55] transition-all duration-300`}>
+      <nav className={`md:hidden fixed ${activeSong ? "bottom-20" : "bottom-0"} left-0 w-full bg-suno-gray-900 border-t border-suno-gray-800 flex justify-around items-center h-16 px-1 pb-safe z-[55] transition-all duration-300`}>
         {NAV_ITEMS.map(({ id, label, icon }) => (
           <button
             key={id}
             id={`mobile-nav-${id}`}
             onClick={() => goToTab(id)}
-            className={`flex flex-col items-center active:scale-90 transition-transform ${activeTab === id ? "text-suno-accent" : "text-gray-400"}`}
+            className={`flex flex-col items-center px-0.5 w-1/5 active:scale-90 transition-transform ${activeTab === id ? "text-suno-accent" : "text-gray-400"}`}
           >
             <span className="material-symbols-outlined text-xl">{icon}</span>
-            <span className="text-xs font-bold mt-0.5">{label}</span>
+            <span className="text-[9px] font-bold mt-0.5 leading-tight text-center w-full line-clamp-2">{label}</span>
           </button>
         ))}
       </nav>

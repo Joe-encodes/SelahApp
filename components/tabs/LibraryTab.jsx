@@ -41,7 +41,7 @@ export const LibraryTab = ({ songs, songsLoaded, onPlay, onQuickPlay, activeSong
 
   return (
     <div className="space-y-8">
-      <div>
+      <div className="md:hidden">
         <h2 className="selah-title-lg">Your Library</h2>
         <p className="selah-body mt-1.5">Browse and practice your saved gospel arrangements.</p>
       </div>

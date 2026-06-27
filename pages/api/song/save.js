@@ -1,5 +1,13 @@
-import { createPagesServerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseClient } from "../../../lib/supabaseServer";
 import { z } from "zod";
+
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: "15mb",
+    },
+  },
+};
 
 const SaveSongSchema = z.object({
   id: z.any().optional(),
@@ -26,16 +34,14 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method Not Allowed" });
   }
 
-  const supabase = createPagesServerClient({ req, res });
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+  const supabase = createServerSupabaseClient({ req });
+  const { data: { user: sessionUser } } = await supabase.auth.getUser();
 
-  if (!session) {
+  if (!sessionUser) {
     return res.status(401).json({ error: "Unauthorized", message: "Please sign in to continue." });
   }
 
-  const user = session.user;
+  const user = sessionUser;
 
   const validation = SaveSongSchema.safeParse(req.body);
   if (!validation.success) {
@@ -86,6 +92,34 @@ export default async function handler(req, res) {
       }
       return res.status(200).json(data);
     } else {
+      // Prevent duplicate insert within a 15s window (sync/reload race condition)
+      let query = supabase
+        .from("songs")
+        .select()
+        .eq("user_id", user.id)
+        .eq("title", song.title);
+      
+      if (song.genre) {
+        query = query.eq("genre", song.genre);
+      } else {
+        query = query.is("genre", null);
+      }
+
+      if (song.musicKey) {
+        query = query.eq("music_key", song.musicKey);
+      } else {
+        query = query.is("music_key", null);
+      }
+
+      const { data: existing } = await query
+        .gt("created_at", new Date(Date.now() - 15000).toISOString())
+        .limit(1)
+        .maybeSingle();
+
+      if (existing) {
+        return res.status(200).json(existing);
+      }
+
       // Insert new song
       const { data, error } = await supabase.from("songs").insert(payload).select().single();
 

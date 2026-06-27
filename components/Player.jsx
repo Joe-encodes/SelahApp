@@ -66,6 +66,7 @@ export const Player = ({
   onClose,
   onUpdateSong,
   user,
+  profile,
   comments,
   commentsLoading,
   newComment,
@@ -87,6 +88,7 @@ export const Player = ({
     volumes, setVolume, exportWav, exportMidi,
     loadStems, clearStems, applyStemGains, stemsLoaded, stemsLoading,
     loadBackingTrack, clearBackingTrack, backingTrackLoaded, backingTrackLoading,
+    playbackMode, setPlaybackMode,
   } = audioState;
 
   const chords = song.chords && song.chords.length > 0 ? song.chords : ["C", "F", "G", "Am"];
@@ -261,6 +263,10 @@ export const Player = ({
       setShowAuthModal(true);
       return;
     }
+    if (!profile || (profile.credits ?? 0) < 3) {
+      alert("Out of credits! Please purchase or add more credits from your profile menu to generate new AI songs (3 credits required).");
+      return;
+    }
     if (stop) stop();
     setIsGeneratingStems(true);
     setElapsedTime(0);
@@ -277,9 +283,14 @@ export const Player = ({
 
     try {
       setGenerationStage("Suno is composing & rendering (this may take 30-120 seconds)...");
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
       const res = await fetch("/api/stems", {
         method:  "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          ...(token ? { "Authorization": `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({
           lyrics:       song.lyrics,
           genre:        song.genre        || "Contemporary",
@@ -391,9 +402,14 @@ export const Player = ({
         reader.onerror = reject;
         reader.readAsDataURL(wavBlob);
       });
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
       const res = await fetch("/api/melody", {
         method:  "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          ...(token ? { "Authorization": `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({ input_audio: base64DataUri, genre: song.genre || "Contemporary", bpm }),
       });
       if (res.status === 401) {
@@ -494,9 +510,14 @@ export const Player = ({
     setDownloadingStemsZip(true);
     setStemsZipError(null);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
       const res = await fetch("/api/song/stems-split", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          ...(token ? { "Authorization": `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({ songId: song.id }),
       });
 
@@ -628,10 +649,10 @@ export const Player = ({
         {/* ================================================================ */}
         {!showAdvanced && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 w-full animate-fadeIn">
-            {/* Left: Styled Cover Graphic */}
+            {/* Left: Consolidated Practice Cover Card */}
             <div className="lg:col-span-5 flex flex-col space-y-6">
               <div className="selah-card rounded-3xl overflow-hidden relative group shadow-2xl flex flex-col">
-                {/* Cover image */}
+                {/* Cover image & badges */}
                 <div className="relative w-full aspect-square overflow-hidden">
                   <img
                     src={coverImage}
@@ -639,59 +660,122 @@ export const Player = ({
                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+                  
+                  {/* Credit badge top-left */}
+                  <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-md rounded-full px-3 py-1 text-[10px] font-mono font-bold text-suno-accent border border-suno-accent/20 z-10 flex items-center gap-1 shadow-lg">
+                    <span className="material-symbols-outlined text-xs">toll</span>
+                    {profile?.credits ?? 0} credits
+                  </div>
+
                   <div className="absolute bottom-4 left-4 right-4 flex items-end justify-between z-10">
                     <div>
                       <h3 className="font-display text-xl font-bold text-white leading-tight line-clamp-2">{song.title}</h3>
                       <p className="selah-body mt-0.5">by {song.creator_name || user?.user_metadata?.full_name || "Selah Choir"}</p>
                       <p className="selah-meta mt-0.5">Key of {song.musicKey || chords[0]} · {song.lang}</p>
                     </div>
-                    {onLike && (
+                    <div className="absolute top-3 right-3 flex gap-2 opacity-100 lg:opacity-0 group-hover:opacity-100 transition-opacity z-10">
                       <button
-                        id="player-cover-like-btn"
-                        onClick={(e) => { e.stopPropagation(); onLike(); }}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full backdrop-blur-md transition-all active:scale-95 cursor-pointer ${
-                          isLiked ? "bg-red-500/20 text-red-500 border border-red-500/35" : "bg-black/40 text-gray-300 border border-gray-700/35 hover:text-white"
-                        }`}
-                        title={isLiked ? "Unlike Song" : "Like Song"}
+                        className="p-2.5 bg-black/60 backdrop-blur-md rounded-full text-white hover:text-suno-accent transition-colors shadow-lg"
+                        onClick={(e) => { e.stopPropagation(); handleShare(); }}
+                        title="Share"
                       >
-                        <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: `'FILL' ${isLiked ? 1 : 0}` }}>favorite</span>
-                        <span className="text-xs font-bold">{likeCount || 0}</span>
+                        <span className="material-symbols-outlined text-[18px]">share</span>
                       </button>
-                    )}
+                      {onLike && (
+                        <button
+                          className={`p-2.5 bg-black/60 backdrop-blur-md rounded-full transition-colors shadow-lg ${isLiked ? "text-red-500" : "text-white hover:text-red-400"}`}
+                          onClick={(e) => { e.stopPropagation(); onLike(); }}
+                          title={isLiked ? "Unlike" : "Like"}
+                        >
+                          <span className="material-symbols-outlined text-[18px]" style={{ fontVariationSettings: `'FILL' ${isLiked ? 1 : 0}` }}>favorite</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
 
-                {/* Download row */}
-                <div className="p-4 flex gap-2 border-t border-suno-gray-800">
-                  {aiAudioUrl ? (
-                    <a
-                      id="download-full-song-btn"
-                      href={aiAudioUrl}
-                      download={`${song.title}.mp3`}
-                      className="flex-1 selah-btn-secondary text-center text-xs flex items-center justify-center gap-1.5"
-                    >
-                      <span className="material-symbols-outlined text-sm">download</span>
-                      Full Song (MP3)
-                    </a>
-                  ) : (
-                    <button
-                      id="download-chords-btn"
-                      onClick={() => {
-                        const text = `${song.title}\n\nChords: ${chords.join(" - ")}\n\n${
-                          (song.lyrics || []).map((l) => `[${l.part}] ${l.line}  (${(l.chords || []).join(" ")})`).join("\n")
-                        }`;
-                        const blob = new Blob([text], { type: "text/plain" });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement("a");
-                        a.href = url; a.download = `${song.title}-chords.txt`; a.click();
-                        URL.revokeObjectURL(url);
-                      }}
-                      className="flex-1 selah-btn-secondary text-xs flex items-center justify-center gap-1.5"
-                    >
-                      <span className="material-symbols-outlined text-sm">download</span>
-                      Chords &amp; Lyrics (TXT)
-                    </button>
+                {/* Unified Action Footer */}
+                <div className="p-5 border-t border-suno-gray-800 space-y-4">
+                  {/* Cloud AI generator inside cover card if Suno mix doesn't exist */}
+                  {!aiAudioUrl && (
+                    <div className="space-y-3">
+                      {isGeneratingStems && (
+                        <div className="p-3 rounded-2xl bg-suno-accent/10 border border-suno-accent/25 text-suno-accent flex flex-col gap-1.5 animate-pulse">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold uppercase tracking-wider">AI Generation ({elapsedTime}s)</span>
+                            <span className="animate-spin material-symbols-outlined text-xs">progress_activity</span>
+                          </div>
+                          <p className="text-[11px] text-white/95 leading-relaxed font-semibold">{generationStage}</p>
+                        </div>
+                      )}
+
+                      {isOwner && (
+                        <button
+                          onClick={generateCloudStems}
+                          disabled={isGeneratingStems || isSynthesizingLocal || (profile?.credits ?? 0) < 3}
+                          className={`w-full py-3.5 rounded-2xl font-bold text-xs transition-all active:scale-95 flex items-center justify-center gap-2 ${
+                            (profile?.credits ?? 0) < 3
+                              ? "bg-suno-gray-800 border border-suno-gray-700 text-gray-500 cursor-not-allowed"
+                              : "bg-suno-accent hover:bg-blue-600 text-white shadow-lg shadow-suno-accent/20"
+                          }`}
+                        >
+                          <span className="material-symbols-outlined text-sm">auto_awesome</span>
+                          {(profile?.credits ?? 0) < 3 
+                            ? "Insufficient Credits (3 Required)" 
+                            : "Generate AI Full Song (Uses 3 Credits)"}
+                        </button>
+                      )}
+                    </div>
                   )}
+
+                  {/* Downloads & exports grid */}
+                  <div className="space-y-2">
+                    {aiAudioUrl && (
+                      <a
+                        href={aiAudioUrl}
+                        download={`${song.title}.mp3`}
+                        className="w-full selah-btn-primary bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 py-3 text-xs rounded-xl flex items-center justify-center gap-1.5 text-center font-bold"
+                      >
+                        <span className="material-symbols-outlined text-xs">download</span>
+                        Download AI Full Mix (MP3)
+                      </a>
+                    )}
+                    <div className="grid grid-cols-3 gap-2">
+                      <button
+                        onClick={() => {
+                          const text = `${song.title}\n\nChords: ${chords.join(" - ")}\n\n${
+                            (song.lyrics || []).map((l) => `[${l.part}] ${l.line}  (${(l.chords || []).join(" ")})`).join("\n")
+                          }`;
+                          const blob = new Blob([text], { type: "text/plain" });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement("a");
+                          a.href = url; a.download = `${song.title}-chords.txt`; a.click();
+                          URL.revokeObjectURL(url);
+                        }}
+                        className="selah-btn-secondary py-2.5 px-2 text-[10px] rounded-xl flex items-center justify-center gap-1 font-bold"
+                        title="Download Lyrics & Chords"
+                      >
+                        <span className="material-symbols-outlined text-xs">description</span>
+                        Lyrics Sheet
+                      </button>
+                      <button
+                        onClick={exportWav}
+                        className="selah-btn-secondary py-2.5 px-2 text-[10px] rounded-xl flex items-center justify-center gap-1 font-bold"
+                        title="Download synthesized backing track WAV"
+                      >
+                        <span className="material-symbols-outlined text-xs">music_note</span>
+                        Chords WAV
+                      </button>
+                      <button
+                        onClick={exportMidi}
+                        className="selah-btn-secondary py-2.5 px-2 text-[10px] rounded-xl flex items-center justify-center gap-1 font-bold"
+                        title="Download MIDI track files"
+                      >
+                        <span className="material-symbols-outlined text-xs">piano</span>
+                        MIDI Track
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -758,9 +842,7 @@ export const Player = ({
                   <button
                     id="choir-desk-play-btn"
                     onClick={() => (isPlaying ? pause() : play())}
-                    className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all cursor-pointer shrink-0 ${
-                      isPlaying ? "bg-gradient-to-r from-red-500 to-rose-600 text-white shadow-red-500/20" : "bg-suno-accent text-white shadow-suno-accent/20"
-                    }`}
+                    className="w-14 h-14 rounded-full flex items-center justify-center bg-suno-accent hover:bg-blue-600 text-white shadow-lg shadow-suno-accent/20 active:scale-95 transition-all cursor-pointer shrink-0"
                   >
                     <span className="material-symbols-outlined text-3xl font-bold" style={{ fontVariationSettings: "'FILL' 1" }}>
                       {isPlaying ? "pause" : "play_arrow"}
@@ -771,38 +853,46 @@ export const Player = ({
                       <span className="material-symbols-outlined">skip_next</span>
                     </button>
                   )}
-                  <div className="text-left ml-2">
-                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Playback</p>
-                    <p className="text-sm text-white font-bold">{isPlaying ? "Rehearsal Live" : "Stopped"}</p>
-                  </div>
                 </div>
-                <div className="flex-grow max-w-xs w-full flex items-center gap-4">
+
+                {/* Source Mode Toggle segment */}
+                {aiAudioUrl && (
+                  <div className="flex bg-suno-gray-950 p-1.5 rounded-2xl border border-suno-gray-850 shrink-0">
+                    <button
+                      onClick={() => setPlaybackMode("suno")}
+                      className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                        playbackMode === "suno"
+                          ? "bg-suno-accent text-white shadow-md shadow-suno-accent/20 font-bold"
+                          : "text-gray-400 hover:text-white"
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-[15px]">auto_awesome</span>
+                      AI Full Mix
+                    </button>
+                    <button
+                      onClick={() => setPlaybackMode("harmony")}
+                      className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                        playbackMode === "harmony"
+                          ? "bg-suno-accent text-white shadow-md shadow-suno-accent/20 font-bold"
+                          : "text-gray-400 hover:text-white"
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-[15px]">equalizer</span>
+                      Choir Harmonies
+                    </button>
+                  </div>
+                )}
+
+                <div className="flex-grow max-w-xs w-full flex items-center gap-4 pr-3">
                   <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Tempo</span>
                   <input
                     type="range" min={50} max={160} value={bpm}
                     onChange={(e) => setBpm(Number(e.target.value))}
                     className="flex-grow accent-suno-accent h-1 bg-suno-gray-700 rounded-full"
                   />
-                  <span className="text-sm font-mono font-bold text-suno-accent w-12 text-right">{bpm}</span>
+                  <span className="text-sm font-mono font-bold text-suno-accent w-10 text-right">{bpm}</span>
                 </div>
-                <button
-                  id="simple-view-like-btn"
-                  onClick={onLike}
-                  className={`px-4 py-3 rounded-full active:scale-95 transition-all border flex items-center gap-1.5 ${
-                    isLiked
-                      ? "bg-red-500/10 hover:bg-red-500/20 text-red-500 border-red-500/40"
-                      : "bg-suno-gray-800 hover:bg-red-500/20 text-gray-400 hover:text-red-400 border border-suno-gray-700 hover:border-red-500/30"
-                  }`}
-                  title={isLiked ? "Unlike this song" : "Like this song"}
-                >
-                  <span
-                    className="material-symbols-outlined text-xl"
-                    style={{ fontVariationSettings: isLiked ? "'FILL' 1" : "'FILL' 0" }}
-                  >
-                    favorite
-                  </span>
-                  <span className="text-xs font-bold">{likeCount || 0}</span>
-                </button>
+
               </div>
             </div>
           </div>
@@ -823,7 +913,7 @@ export const Player = ({
                     <div className="flex items-center justify-between border-b border-suno-gray-800 pb-4 z-10">
                       <span className="text-xs text-suno-accent font-bold uppercase tracking-widest">Lyrics</span>
                       <div className="flex items-center gap-2 bg-suno-gray-800 px-3 py-1 rounded-full border border-suno-gray-700">
-                        <span className={`w-2.5 h-2.5 rounded-full ${isPlaying ? "bg-emerald-500 animate-pulse" : "bg-gray-600"}`}></span>
+                        <span className={`w-2.5 h-2.5 rounded-full inline-block shrink-0 ${isPlaying ? "bg-emerald-500 animate-pulse" : "bg-gray-600"}`}></span>
                         <span className="text-xs text-gray-400 font-bold">{isPlaying ? "Active Playback" : "Idle"}</span>
                       </div>
                     </div>
@@ -863,7 +953,7 @@ export const Player = ({
                     </div>
 
                     {/* Arrangement Monitor */}
-                    {song.lyrics && song.lyrics[activeLyricIdx] && (
+                    {playbackMode === "harmony" && song.lyrics && song.lyrics[activeLyricIdx] && (
                       <div className="z-10 flex items-center justify-center gap-4 bg-suno-gray-950/60 border border-suno-gray-850 px-4 py-2.5 rounded-2xl max-w-md mx-auto w-full backdrop-blur-sm mb-4">
                         <div className="flex flex-col items-center">
                           <span className="text-[9px] text-gray-500 uppercase tracking-wider font-bold">Dynamics</span>
@@ -907,67 +997,92 @@ export const Player = ({
                     )}
 
                     {/* Active Chords Guide */}
-                    <div className="border-t border-suno-gray-800 pt-6 z-10">
-                      <p className="text-center text-xs text-gray-500 uppercase tracking-widest mb-4">Active Chords Guide</p>
-                      <div className="flex justify-center flex-wrap gap-3">
-                        {(() => {
-                          const collapsedChords = [];
-                          chords.forEach((chord, index) => {
-                            if (collapsedChords.length === 0 || collapsedChords[collapsedChords.length - 1].chord !== chord) {
-                              collapsedChords.push({ chord, originalIndices: [index] });
-                            } else {
-                              collapsedChords[collapsedChords.length - 1].originalIndices.push(index);
-                            }
-                          });
-                          return collapsedChords.map(({ chord, originalIndices }, i) => {
-                            const isActive = isPlaying && originalIndices.includes(currentChordIdx);
-                            return (
-                              <div
-                                key={i}
-                                className={`w-14 h-14 rounded-2xl border-2 flex items-center justify-center transition-all duration-300 font-mono text-sm ${
-                                  isActive
-                                    ? "bg-suno-accent/20 border-suno-accent text-suno-accent shadow-[0_0_20px_rgba(35,212,94,0.25)] scale-110 font-bold"
-                                    : "bg-suno-gray-800 border-suno-gray-700 text-gray-400"
-                                }`}
-                              >
-                                {chord}
-                              </div>
-                            );
-                          });
-                        })()}
+                    {playbackMode === "harmony" && (
+                      <div className="border-t border-suno-gray-800 pt-6 z-10">
+                        <p className="text-center text-xs text-gray-500 uppercase tracking-widest mb-4">Active Chords Guide</p>
+                        <div className="flex justify-center flex-wrap gap-3">
+                          {(() => {
+                            const collapsedChords = [];
+                            chords.forEach((chord, index) => {
+                              if (collapsedChords.length === 0 || collapsedChords[collapsedChords.length - 1].chord !== chord) {
+                                collapsedChords.push({ chord, originalIndices: [index] });
+                              } else {
+                                collapsedChords[collapsedChords.length - 1].originalIndices.push(index);
+                              }
+                            });
+                            return collapsedChords.map(({ chord, originalIndices }, i) => {
+                              const isActive = isPlaying && originalIndices.includes(currentChordIdx);
+                              return (
+                                <div
+                                  key={i}
+                                  className={`w-14 h-14 rounded-2xl border-2 flex items-center justify-center transition-all duration-300 font-mono text-sm ${
+                                    isActive
+                                      ? "bg-suno-accent/20 border-suno-accent text-suno-accent shadow-[0_0_20px_rgba(35,212,94,0.25)] scale-110 font-bold"
+                                      : "bg-suno-gray-800 border-suno-gray-700 text-gray-400"
+                                  }`}
+                                >
+                                  {chord}
+                                </div>
+                              );
+                            });
+                          })()}
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
 
                   {/* Playback Controls */}
                   <div className="selah-panel p-6 flex flex-col md:flex-row items-center gap-6 justify-between">
                     <div className="flex items-center gap-4">
-                      <button onClick={handleStop} className="p-4 bg-suno-gray-800 hover:bg-suno-gray-700 rounded-2xl active:scale-95 transition-all text-gray-400 hover:text-white" title="Stop Playback">
+                      <button onClick={handleStop} className="p-4 bg-suno-gray-800 hover:bg-suno-gray-700 rounded-2xl active:scale-95 transition-all text-gray-400 hover:text-white shrink-0" title="Stop Playback">
                         <span className="material-symbols-outlined">stop</span>
                       </button>
                       <button
                         onClick={handlePlayPause}
-                        className={`w-16 h-16 rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-xl ${
-                          isPlaying ? "bg-gradient-to-r from-red-500 to-rose-600 text-white shadow-red-500/20" : "bg-suno-accent text-white shadow-suno-accent/20"
-                        }`}
+                        className="w-16 h-16 rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-xl bg-suno-accent text-white shadow-suno-accent/20 shrink-0"
                       >
                         <span className="material-symbols-outlined text-3xl font-bold" style={{ fontVariationSettings: "'FILL' 1" }}>
                           {isPlaying ? "pause" : "play_arrow"}
                         </span>
                       </button>
-                      <div className="text-left ml-2">
-                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Playback</p>
-                        <p className="text-sm text-white font-bold">{isPlaying ? "Rehearsal Live" : "Stopped"}</p>
-                      </div>
                     </div>
-                    <div className="flex-grow max-w-xs w-full flex items-center gap-4">
+
+                    {/* Source Mode Toggle segment */}
+                    {aiAudioUrl && (
+                      <div className="flex bg-suno-gray-950 p-1.5 rounded-2xl border border-suno-gray-850 shrink-0">
+                        <button
+                          onClick={() => setPlaybackMode("suno")}
+                          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                            playbackMode === "suno"
+                              ? "bg-suno-accent text-white shadow-md shadow-suno-accent/20 font-bold"
+                              : "text-gray-400 hover:text-white"
+                          }`}
+                        >
+                          <span className="material-symbols-outlined text-[15px]">auto_awesome</span>
+                          AI Full Mix
+                        </button>
+                        <button
+                          onClick={() => setPlaybackMode("harmony")}
+                          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                            playbackMode === "harmony"
+                              ? "bg-suno-accent text-white shadow-md shadow-suno-accent/20 font-bold"
+                              : "text-gray-400 hover:text-white"
+                          }`}
+                        >
+                          <span className="material-symbols-outlined text-[15px]">equalizer</span>
+                          Choir Harmonies
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="flex-grow max-w-xs w-full flex items-center gap-4 pr-3">
                       <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Tempo</span>
                       <input
                         type="range" min={50} max={160} value={bpm}
                         onChange={(e) => setBpm(Number(e.target.value))}
                         className="flex-grow accent-suno-accent h-1 bg-suno-gray-700 rounded-full"
                       />
-                      <span className="text-sm font-mono font-bold text-suno-accent w-12 text-right">{bpm}</span>
+                      <span className="text-sm font-mono font-bold text-suno-accent w-10 text-right">{bpm}</span>
                     </div>
                   </div>
 
@@ -1156,35 +1271,7 @@ export const Player = ({
                               </div>
                             )}
 
-                            {/* AI generation — primary option */}
-                            {isOwner && (
-                              <button
-                                id="generate-ai-song-btn"
-                                onClick={generateCloudStems}
-                                disabled={isGeneratingStems || isSynthesizingLocal}
-                                className={`w-full py-3.5 rounded-2xl font-bold text-xs border flex items-center justify-center gap-2 active:scale-95 transition-all ${
-                                  isGeneratingStems
-                                    ? "bg-suno-gray-800 border-suno-gray-700 text-gray-500 cursor-wait"
-                                    : isSynthesizingLocal
-                                    ? "bg-suno-gray-855 border-suno-gray-850 text-gray-650 cursor-not-allowed"
-                                    : "bg-suno-accent/10 border-suno-accent/20 text-suno-accent hover:bg-suno-accent/20 hover:border-suno-accent"
-                                }`}
-                              >
-                                {isGeneratingStems ? (
-                                  <>
-                                    <span className="animate-spin material-symbols-outlined text-sm">progress_activity</span>
-                                    Generating AI Song ({elapsedTime}s)...
-                                  </>
-                                ) : (
-                                  <>
-                                    <span className="material-symbols-outlined text-sm">auto_awesome</span>
-                                    Generate AI Song (Suno via apiframe)
-                                  </>
-                                )}
-                              </button>
-                            )}
-
-                            {/* Local synth — instant fallback */}
+                            {/* Harmony synthesis — primary option in this panel */}
                             <button
                               id="generate-local-stems-btn"
                               onClick={generateLocalStems}
@@ -1193,19 +1280,19 @@ export const Player = ({
                                 isSynthesizingLocal
                                   ? "bg-suno-gray-800 border-suno-gray-700 text-gray-500 cursor-wait"
                                   : isGeneratingStems
-                                  ? "bg-suno-gray-850 border-suno-gray-800 text-gray-600 cursor-not-allowed"
-                                  : "bg-suno-gray-800 border-suno-gray-700 text-gray-300 hover:bg-suno-gray-750 hover:text-white"
+                                  ? "bg-suno-gray-850 border-suno-gray-800 text-gray-650 cursor-not-allowed"
+                                  : "bg-suno-gray-850 border-suno-gray-700 text-gray-300 hover:bg-suno-gray-750 hover:text-white"
                               }`}
                             >
                               {isSynthesizingLocal ? (
                                 <>
                                   <span className="animate-spin material-symbols-outlined text-sm">progress_activity</span>
-                                  Synthesizing...
+                                  Synthesizing Harmonies...
                                 </>
                               ) : (
                                 <>
                                   <span className="material-symbols-outlined text-sm">piano</span>
-                                  Instant Local Synth (No Credits)
+                                  Multi-Part Harmony Generation
                                 </>
                               )}
                             </button>

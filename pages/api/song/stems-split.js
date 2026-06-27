@@ -1,4 +1,4 @@
-import { createPagesServerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerSupabaseClient } from "../../../lib/supabaseServer";
 import { z } from "zod";
 import JSZip from "jszip";
 import { generateGospelMidi } from "../../../lib/midi";
@@ -23,16 +23,14 @@ export default async function handler(req, res) {
   }
 
   // 1. Verify Authentication
-  const supabase = createPagesServerClient({ req, res });
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+  const supabase = createServerSupabaseClient({ req });
+  const { data: { user: sessionUser } } = await supabase.auth.getUser();
 
-  if (!session) {
+  if (!sessionUser) {
     return res.status(401).json({ error: "Unauthorized", message: "Please sign in to continue." });
   }
 
-  const user = session.user;
+  const user = sessionUser;
 
   // 2. Validate Inputs
   const validation = StemsSplitSchema.safeParse(req.body);

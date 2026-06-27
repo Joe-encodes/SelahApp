@@ -48,7 +48,7 @@ export const CreateTab = ({ onGenerate }) => {
   return (
     <div className="space-y-8 w-full max-w-4xl mx-auto font-sans text-gray-200">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-suno-gray-800 pb-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-suno-gray-800 pb-6 md:hidden">
         <div>
           <h2 className="font-display text-2xl md:text-3xl text-white font-extrabold leading-tight">
             Create Studio

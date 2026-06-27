@@ -71,7 +71,7 @@ export const CommunityTab = ({ onPlay }) => {
   if (!SUPABASE_READY) {
     return (
       <div className="space-y-8">
-        <div>
+        <div className="md:hidden">
           <h2 className="selah-title-lg">Community Feed</h2>
           <p className="selah-body mt-1.5">Discover what the global gospel choir is creating.</p>
         </div>
@@ -88,7 +88,7 @@ export const CommunityTab = ({ onPlay }) => {
 
   return (
     <div className="space-y-8">
-      <div>
+      <div className="md:hidden">
         <h2 className="selah-title-lg">Community Feed</h2>
         <p className="selah-body mt-1.5">Gospel arrangements shared by the Selah community.</p>
       </div>

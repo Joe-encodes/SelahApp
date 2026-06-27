@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import fs from "fs";
+import { z } from "zod";
 
-// Simple env file parser
 const envContent = fs.readFileSync(".env.local", "utf8");
 const env = {};
 envContent.split("\n").forEach((line) => {
@@ -14,25 +14,63 @@ envContent.split("\n").forEach((line) => {
 });
 
 const supabaseUrl = env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseKey = env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+// We need an authenticated session to test RLS insertion, or use service_role to check constraints.
+// Since we don't have service_role, we will test the Zod schema first.
 
-const supabase = createClient(supabaseUrl, supabaseKey);
+const SaveSongSchema = z.object({
+  id: z.any().optional(),
+  supabase_id: z.any().optional(),
+  title: z.string(),
+  genre: z.string().optional().nullable(),
+  musicKey: z.string().optional().nullable(),
+  lang: z.string().optional().nullable(),
+  theme: z.string().optional().nullable(),
+  scripture: z.string().optional().nullable(),
+  lyrics: z.any().optional().nullable(),
+  chords: z.array(z.string()).optional().nullable(),
+  emotional_mode: z.string().optional().nullable(),
+  instrumentation: z.string().optional().nullable(),
+  vocal_gender: z.string().optional().nullable(),
+  audio_url: z.string().optional().nullable(),
+  tracks: z.any().optional().nullable(),
+  ai_source: z.string().optional().nullable(),
+  is_public: z.boolean().optional().nullable(),
+});
 
-async function test() {
-  console.log("Checking Supabase connection to:", supabaseUrl);
-  const { data, error } = await supabase.from("song_comments").select("*").limit(1);
-  if (error) {
-    console.error("Error from song_comments query:", error);
+function testZod() {
+  const params = {
+    title: "Amazing Grace",
+    genre: "Hymn",
+    musicKey: "G",
+    theme: "Grace",
+    scripture: "",
+    lyrics: [
+      { part: "Verse 1", line: "Amazing grace! How sweet the sound", chords: ["G", "C", "G"], arrangement: [] }
+    ],
+    chords: ["G", "C"],
+  };
+
+  const newSong = {
+    id: Date.now(),
+    title: params.title,
+    genre: params.genre || "Contemporary",
+    musicKey: params.musicKey || "G",
+    lang: "English",
+    theme: params.theme || "",
+    scripture: params.scripture || "",
+    lyrics: params.lyrics || [],
+    chords: params.chords || [],
+    creator_name: "Test",
+    is_public: false,
+    created_at: Date.now(),
+  };
+
+  const validation = SaveSongSchema.safeParse(newSong);
+  if (!validation.success) {
+    console.error("Zod Validation Failed:", validation.error.format());
   } else {
-    console.log("Success! song_comments table exists:", data);
-  }
-
-  const { data: recData, error: recError } = await supabase.from("comment_reactions").select("*").limit(1);
-  if (recError) {
-    console.error("Error from comment_reactions query:", recError);
-  } else {
-    console.log("Success! comment_reactions table exists:", recData);
+    console.log("Zod Validation Passed!", validation.data);
   }
 }
 
-test();
+testZod();
