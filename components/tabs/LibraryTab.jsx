@@ -116,9 +116,17 @@ export const LibraryTab = ({ songs, songsLoaded, onPlay, onQuickPlay, activeSong
                   </div>
                 </div>
 
-                <div className="p-4">
-                  <h3 className="selah-body-bold truncate">{song.title}</h3>
-                  <p className="selah-meta mt-1 truncate">by {song.creator_name || "Selah Choir"}</p>
+                <div className="p-4 flex-grow flex flex-col justify-between">
+                  <div>
+                    <h3 className="selah-body-bold truncate">{song.title}</h3>
+                    <p className="selah-meta mt-1 truncate">by {song.creator_name || "Selah Choir"}</p>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between">
+                    <div className="flex items-center gap-1 text-xs text-gray-500 ml-auto font-bold">
+                      <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>favorite</span>
+                      <span>{song.like_count ?? 0}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             );
