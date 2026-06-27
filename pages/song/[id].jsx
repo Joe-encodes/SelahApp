@@ -79,6 +79,13 @@ export default function SongPage() {
       alert("Please sign in to like songs.");
       return;
     }
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      alert("Your session has expired. Redirecting to sign in page...");
+      await supabase.auth.signOut();
+      router.push("/auth");
+      return;
+    }
     setCommentError(null);
     let currentSong = song;
     if (!currentSong.supabase_id) {
@@ -148,6 +155,13 @@ export default function SongPage() {
   const handlePostComment = async (e) => {
     e.preventDefault();
     if (!newComment.trim() || !user || !song) return;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      alert("Your session has expired. Redirecting to sign in page...");
+      await supabase.auth.signOut();
+      router.push("/auth");
+      return;
+    }
     const trimmed = newComment.trim();
     if (trimmed.length > 1000) {
       setCommentError("Comment cannot exceed 1000 characters.");
@@ -222,6 +236,13 @@ export default function SongPage() {
   const handleLikeComment = async (commentId) => {
     if (!user) {
       alert("Please sign in to react to comments.");
+      return;
+    }
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      alert("Your session has expired. Redirecting to sign in page...");
+      await supabase.auth.signOut();
+      router.push("/auth");
       return;
     }
     try {
