@@ -163,8 +163,6 @@ export default function SelahApp() {
           (s) => s.title === params.title && s.chords?.join(",") === (params.chords || []).join(",")
         );
         if (existingPreset) {
-          stop();
-          setActiveSong(existingPreset);
           router.push(`/song/${existingPreset.id}?from=${activeTab}`);
           setGenerating(false);
           return;
@@ -185,8 +183,6 @@ export default function SelahApp() {
         };
         const savedSong = await saveSong(newSong).catch(() => newSong);
         setSongs((prev) => [savedSong, ...prev]);
-        stop();
-        setActiveSong(savedSong);
         router.push(`/song/${savedSong.id}?from=${activeTab}`);
         return;
       }
@@ -245,7 +241,6 @@ export default function SelahApp() {
   }, [activeSong]);
 
   const handleSongSelect = (song) => {
-    stop();
     let sourceQueue = [];
     let sourceName = "";
     if (activeTab === "home") {
@@ -273,7 +268,6 @@ export default function SelahApp() {
       setPlaySource(sourceName);
     }
 
-    setActiveSong(song);
     router.push(`/song/${song.id}?from=${activeTab}`);
   };
 

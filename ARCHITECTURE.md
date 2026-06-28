@@ -114,45 +114,52 @@ All cloud storage is managed by Supabase. Local storage acts as an offline-first
   - Rotates up to 4 Groq API keys to prevent rate limit limits.
   - Builds dynamic prompts based on emotional mode mappings and instrumentation profiles.
   - Executes **Scripture Translation Rule**: translating the verse references into first-person testimonies or prayers rather than direct literal quotes.
-  - Validates and parses Groq Llama-3.3-70b-versatile JSON output, flat-mapping sections into chords/lyric line maps.
-
-#### 2. [pages/api/stems.js](pages/api/stems.js)
-- **Role**: Proxies requests for Suno AI full-mix generation.
-
-#### 3. [pages/api/melody.js](pages/api/melody.js)
-- **Role**: Proxies backing track generation requests.
-
-#### 4. [pages/api/song/stems-split.js](pages/api/song/stems-split.js)
-- **Role**: Handles audio stem separation and packaging.
-- **Key Functions & Logic**:
-  - Performs authentication and song ownership verification.
-  - Deducts 3 credits for stem separation.
-  - If a `REPLICATE_API_TOKEN` is found, submits song's Suno `audio_url` to Replicate's `cjwbw/demucs` model, polling until success, and downloading individual stems (`vocals`, `drums`, `bass`, `accompaniment`).
-  - Gracefully falls back to local backing track MIDI and full mix MP3 if the token is missing, writing a `readme.txt` into the ZIP explaining configuration options.
-  - Uses `jszip` to bundle tracks and downloads them dynamically as a ZIP.
-
-#### 5. [pages/api/song/comments.js](pages/api/song/comments.js)
-- **Role**: CRUD operations for comments.
-- **Key Functions & Logic**:
-  - `GET`: Reads comments for a `songId` joining user profiles and including like states.
-  - `POST`: Validates content (using Zod) and saves a new comment.
-  - `DELETE`: Verifies user ownership and deletes comment.
-
-#### 6. [pages/api/song/comment-like.js](pages/api/song/comment-like.js)
-- **Role**: Toggles hearts/reactions on song comments.
-
----
-
-### C. Shared React Components (`/components`)
-
-#### 1. [components/Player.jsx](components/Player.jsx)
-- **Role**: Main choir rehearsal dashboard.
-- **Key Functions & Logic**:
-  - `isOwner`: Checks if the logged-in user owns the song: `!song.user_id || (user && String(user.id) === String(song.user_id))`.
-  - `handleTogglePublish`: Guarded to prevent non-owners from toggling the publication status.
-  - Synchronizes active playback chord indices with lyrics scroll timeline.
-  - Controls local synthesis trigger and dispatches asynchronous cloud synthesis requests.
-  - Integrates "Download Multitrack Stems (.zip)" inside the downloads panel, requesting `POST /api/song/stems-split` and saving the resulting file.
+    - Rotates up to 4 Groq API keys to prevent rate limit limits.
+    - Executes **Scripture Translation Rule**: translating the verse references into first-person testimonies or prayers rather than direct literal quotes.
+    - Validates and parses Groq Llama-3.3-70b-versatile JSON output, flat-mapping sections into chords/lyric line maps.
+  
+  #### 2. [pages/api/stems.js](pages/api/stems.js)
+  - **Role**: Proxies requests for Suno AI full-mix generation.
+  - **Key Functions & Logic**:
+    - Performs authentication and validates lyrics/production parameters.
+    - Deducts **3 credits** atomically from the user profile.
+    - Initiates composition on apiframe and polls status.
+  
+  #### 3. [pages/api/melody.js](pages/api/melody.js)
+  - **Role**: Proxies backing track generation requests.
+  
+  #### 4. [pages/api/song/stems-split.js](pages/api/song/stems-split.js)
+  - **Role**: Handles audio stem separation and packaging.
+  - **Key Functions & Logic**:
+    - Performs authentication and song ownership verification.
+    - Deducts 3 credits for stem separation.
+    - If a `REPLICATE_API_TOKEN` is found, submits song's Suno `audio_url` to Replicate's `cjwbw/demucs` model, polling until success, and downloading individual stems (`vocals`, `drums`, `bass`, `accompaniment`).
+    - Gracefully falls back to local backing track MIDI and full mix MP3 if the token is missing, writing a `readme.txt` into the ZIP explaining configuration options.
+    - Uses `jszip` to bundle tracks and downloads them dynamically as a ZIP.
+  
+  #### 5. [pages/api/song/comments.js](pages/api/song/comments.js)
+  - **Role**: CRUD operations for comments.
+  - **Key Functions & Logic**:
+    - `GET`: Reads comments for a `songId` joining user profiles and including like states.
+    - `POST`: Validates content (using Zod) and saves a new comment.
+    - `DELETE`: Verifies user ownership and deletes comment.
+  
+  #### 6. [pages/api/song/comment-like.js](pages/api/song/comment-like.js)
+  - **Role**: Toggles hearts/reactions on song comments.
+  
+  ---
+  
+  ### C. Shared React Components (`/components`)
+  
+  #### 1. [components/Player.jsx](components/Player.jsx)
+  - **Role**: Main choir rehearsal dashboard.
+  - **Key Functions & Logic**:
+    - `isOwner`: Checks if the logged-in user owns the song.
+    - `isActiveSong`: Restricts play/pause controls to show actual states only if the active song is loaded, preventing unplayed song detail navigations from stopping current background music.
+    - `handleTogglePublish`: Guarded to prevent non-owners from toggling the publication status.
+    - Enforces 3 credit check to prevent Suno generations if user has less than 3 credits.
+    - Consolidates lyrics sheet download, chords WAV/MIDI exports, and credits badge directly into the Cover Card.
+    - Integrates "Download Multitrack Stems (.zip)" inside the downloads panel, requesting `POST /api/song/stems-split` and saving the resulting file.
 
 #### 2. [components/ProfileModal.jsx](components/ProfileModal.jsx)
 - **Role**: User Profile Settings management modal.

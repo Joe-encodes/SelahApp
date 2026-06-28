@@ -290,11 +290,7 @@ export default function SongPage() {
     handlePrev,
   } = useAudioContext();
 
-  useEffect(() => {
-    if (song) {
-      setActiveSong(song);
-    }
-  }, [song, setActiveSong]);
+
 
   useEffect(() => {
     if (recommendations && recommendations.length > 0 && playQueue.length === 0) {

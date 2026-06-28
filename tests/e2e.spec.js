@@ -82,8 +82,8 @@ test.describe("SelahApp E2E Flow", () => {
   test("should toggle between Sign In and Create Account modes", async ({ page }) => {
     await page.goto("/auth");
 
-    const createAccountTab = page.getByRole("button", { name: "Create Account" });
-    const signInTab = page.getByRole("button", { name: "Sign In" });
+    const createAccountTab = page.locator("#auth-toggle-signup");
+    const signInTab = page.locator("#auth-toggle-signin");
 
     // Click Create Account
     await createAccountTab.click();
@@ -115,7 +115,7 @@ test.describe("SelahApp E2E Flow", () => {
     await page.locator("#auth-submit-btn").click();
 
     // Redirect to home page
-    await page.waitForURL("**/");
+    await page.waitForURL("**/app");
 
     // Discover (home) tab should be active. Verify search bar is visible.
     const searchBar = page.locator("input[placeholder='Search songs, themes, scriptures...']");
@@ -124,12 +124,12 @@ test.describe("SelahApp E2E Flow", () => {
     // 2. Navigate to Create Studio tab
     await page.locator("#nav-create").click();
     await expect(searchBar).not.toBeVisible();
-    await expect(page.locator("h2:has-text('Create Studio')")).toBeVisible();
+    await expect(page.locator("h2:has-text('Create Studio')").first()).toBeVisible();
 
     // 3. Navigate to Rehearse tab
     await page.locator("#nav-rehearse").click();
     await expect(searchBar).not.toBeVisible();
-    await expect(page.locator("h2:has-text('Rehearsal & Practice Room')")).toBeVisible();
+    await expect(page.locator("h2:has-text('Rehearsal & Practice Room')").first()).toBeVisible();
 
     // 4. Click a classic song "Amazing Grace" to load it
     await page.locator("text=Amazing Grace").first().click();

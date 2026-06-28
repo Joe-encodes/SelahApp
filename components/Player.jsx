@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import { StemRow } from "./StemRow";
 import { AuthRequiredModal } from "./AuthRequiredModal";
 import { supabase } from "../lib/supabase";
+import { useAudioContext } from "../lib/audioContext";
 
 const validateChords = (text) => {
   const errors = [];
@@ -90,6 +91,10 @@ export const Player = ({
     loadBackingTrack, clearBackingTrack, backingTrackLoaded, backingTrackLoading,
     playbackMode, setPlaybackMode,
   } = audioState;
+
+  const { activeSong, setActiveSong } = useAudioContext();
+  const isActiveSong = activeSong && String(activeSong.id) === String(song.id);
+  const isPlayingHere = isActiveSong && isPlaying;
 
   const chords = song.chords && song.chords.length > 0 ? song.chords : ["C", "F", "G", "Am"];
   const isOwner = !!(user && song.user_id && String(user.id) === String(song.user_id));
@@ -437,7 +442,20 @@ export const Player = ({
   const updateStem = (key, field, val) =>
     setStemState((s) => ({ ...s, [key]: { ...s[key], [field]: val } }));
 
-  const handlePlayPause = () => (isPlaying ? pause() : play());
+  const handlePlayPause = () => {
+    if (!isActiveSong) {
+      setActiveSong(song);
+      setTimeout(() => {
+        play();
+      }, 100);
+    } else {
+      if (isPlaying) {
+        pause();
+      } else {
+        play();
+      }
+    }
+  };
   const handleStop = () => { stop(); };
 
   const handleLyricLineChange = (index, field, val) => {
@@ -841,11 +859,11 @@ export const Player = ({
                   )}
                   <button
                     id="choir-desk-play-btn"
-                    onClick={() => (isPlaying ? pause() : play())}
+                    onClick={handlePlayPause}
                     className="w-14 h-14 rounded-full flex items-center justify-center bg-suno-accent hover:bg-blue-600 text-white shadow-lg shadow-suno-accent/20 active:scale-95 transition-all cursor-pointer shrink-0"
                   >
                     <span className="material-symbols-outlined text-3xl font-bold" style={{ fontVariationSettings: "'FILL' 1" }}>
-                      {isPlaying ? "pause" : "play_arrow"}
+                      {isPlayingHere ? "pause" : "play_arrow"}
                     </span>
                   </button>
                   {onNext && (
@@ -1042,7 +1060,7 @@ export const Player = ({
                         className="w-16 h-16 rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-xl bg-suno-accent text-white shadow-suno-accent/20 shrink-0"
                       >
                         <span className="material-symbols-outlined text-3xl font-bold" style={{ fontVariationSettings: "'FILL' 1" }}>
-                          {isPlaying ? "pause" : "play_arrow"}
+                          {isPlayingHere ? "pause" : "play_arrow"}
                         </span>
                       </button>
                     </div>

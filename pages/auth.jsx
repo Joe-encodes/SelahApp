@@ -133,6 +133,7 @@ export default function AuthPage() {
           {/* Mode toggle */}
           <div className="flex bg-suno-gray-950 rounded-2xl p-1 mb-7 border border-suno-gray-800">
             <button
+              id="auth-toggle-signin"
               onClick={() => { setAuthMode("signin"); setError(""); setSuccessMessage(""); }}
               className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${
                 authMode === "signin"
@@ -143,6 +144,7 @@ export default function AuthPage() {
               Sign In
             </button>
             <button
+              id="auth-toggle-signup"
               onClick={() => { setAuthMode("signup"); setError(""); setSuccessMessage(""); }}
               className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${
                 authMode === "signup"
